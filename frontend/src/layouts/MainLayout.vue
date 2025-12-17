@@ -30,6 +30,20 @@
           <span>文件管理</span>
         </a-menu-item>
         
+        <!-- 数据处理模块 -->
+        <a-sub-menu key="processing">
+          <template #icon><SwapOutlined /></template>
+          <template #title>数据处理</template>
+          <a-menu-item key="processing/mappings">
+            <template #icon><SwapOutlined /></template>
+            <span>映射配置</span>
+          </a-menu-item>
+          <a-menu-item key="processing/tasks">
+            <template #icon><ThunderboltOutlined /></template>
+            <span>处理任务</span>
+          </a-menu-item>
+        </a-sub-menu>
+        
         <a-menu-item v-if="userStore.isAdmin" key="users">
           <template #icon><TeamOutlined /></template>
           <span>用户管理</span>
@@ -135,6 +149,8 @@ import {
   FileSearchOutlined,
   ApartmentOutlined,
   MenuOutlined,
+  SwapOutlined,
+  ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
@@ -143,7 +159,7 @@ const userStore = useUserStore()
 
 const collapsed = ref(false)
 const selectedKeys = ref<string[]>(['dashboard'])
-const openKeys = ref<string[]>(['logs']) // 默认展开日志菜单
+const openKeys = ref<string[]>(['logs', 'processing']) // 默认展开日志和数据处理菜单
 
 // 根据路由设置选中菜单
 watch(
@@ -152,6 +168,8 @@ watch(
     if (path) {
       if (path.includes('/logs/login')) selectedKeys.value = ['logs/login']
       else if (path.includes('/logs/operation')) selectedKeys.value = ['logs/operation']
+      else if (path.includes('/processing/mappings')) selectedKeys.value = ['processing/mappings']
+      else if (path.includes('/processing/tasks')) selectedKeys.value = ['processing/tasks']
       else selectedKeys.value = [path.split('/')[1] || 'dashboard']
     }
   },

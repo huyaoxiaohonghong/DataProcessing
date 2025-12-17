@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/users/', include('apps.users.urls', namespace='users')),
     path('api/files/', include('apps.files.urls', namespace='files')),
     path('api/system/', include('apps.system.urls', namespace='system')),
+    path('api/processing/', include('apps.processing.urls', namespace='processing')),
 ]
 
 # 开发环境下提供媒体文件访问

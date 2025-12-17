@@ -65,6 +65,31 @@ const routes: RouteRecordRaw[] = [
                 name: 'Menus',
                 component: () => import('@/views/system/MenuList.vue'),
                 meta: { title: '菜单管理', icon: 'menu', roles: ['admin'] }
+            },
+            // 数据处理模块
+            {
+                path: 'processing/mappings',
+                name: 'MappingList',
+                component: () => import('@/views/processing/MappingList.vue'),
+                meta: { title: '映射配置', icon: 'swap' }
+            },
+            {
+                path: 'processing/mappings/create',
+                name: 'MappingCreate',
+                component: () => import('@/views/processing/MappingEdit.vue'),
+                meta: { title: '新建映射配置', icon: 'swap' }
+            },
+            {
+                path: 'processing/mappings/:id',
+                name: 'MappingEdit',
+                component: () => import('@/views/processing/MappingEdit.vue'),
+                meta: { title: '编辑映射配置', icon: 'swap' }
+            },
+            {
+                path: 'processing/tasks',
+                name: 'TaskList',
+                component: () => import('@/views/processing/TaskList.vue'),
+                meta: { title: '处理任务', icon: 'thunderbolt' }
             }
         ]
     },

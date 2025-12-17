@@ -47,6 +47,7 @@ INSTALLED_APPS = [
     'apps.users',
     'apps.files',
     'apps.system.apps.SystemConfig',
+    'apps.processing',
 ]
 
 MIDDLEWARE = [
@@ -93,11 +94,14 @@ DATABASES = {
         'PASSWORD': '123456',
         'HOST': '149.88.74.178',
         'PORT': '3306',
-        'CONN_MAX_AGE': 60,  # 连接池最大存活时间（秒）
+        'CONN_MAX_AGE': 0,  # 每次请求使用新连接，避免连接超时问题
+        'CONN_HEALTH_CHECKS': True,  # 启用连接健康检查
         'OPTIONS': {
             'charset': 'utf8mb4',
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'connect_timeout': 10,  # 连接超时时间
+            'read_timeout': 30,  # 读取超时时间
+            'write_timeout': 30,  # 写入超时时间
         },
     }
 }
