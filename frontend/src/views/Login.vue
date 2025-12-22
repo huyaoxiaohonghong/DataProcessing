@@ -10,9 +10,10 @@
       <a-form
         :model="formState"
         :rules="rules"
-        @finish="handleLogin"
+        @finish="handleLoginClick"
         layout="vertical"
         class="login-form"
+        ref="formRef"
       >
         <a-form-item name="username">
           <a-input
@@ -59,6 +60,21 @@
         <p>默认账号: admin / admin123</p>
       </div>
     </div>
+    
+    <!-- 滑动验证弹窗 -->
+    <a-modal
+      v-model:open="showVerifyModal"
+      title="安全验证"
+      :footer="null"
+      :maskClosable="false"
+      :width="340"
+      centered
+    >
+      <SlideVerify 
+        @success="handleVerifySuccess"
+        @error="handleVerifyError"
+      />
+    </a-modal>
   </div>
 </template>
 
@@ -68,6 +84,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
 import { UserOutlined, LockOutlined } from '@ant-design/icons-vue'
 import { useUserStore } from '@/stores/user'
+import SlideVerify from '@/components/SlideVerify/index.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -75,6 +92,11 @@ const userStore = useUserStore()
 
 const loading = ref(false)
 const rememberMe = ref(false)
+const showVerifyModal = ref(false)
+
+// 验证码数据
+const captchaKey = ref('')
+const xOffset = ref(0)
 
 const formState = reactive({
   username: '',
@@ -86,11 +108,39 @@ const rules = {
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
-async function handleLogin() {
+// 点击登录按钮 - 显示验证弹窗
+async function handleLoginClick() {
+  showVerifyModal.value = true
+}
+
+// 验证成功回调
+function handleVerifySuccess(key: string, offset: number) {
+  captchaKey.value = key
+  xOffset.value = offset
+  showVerifyModal.value = false
+  
+  // 执行登录
+  performLogin()
+}
+
+// 验证失败回调
+function handleVerifyError() {
+  message.error('验证失败，请重试')
+}
+
+// 执行登录
+async function performLogin() {
   loading.value = true
   
   try {
-    const result = await userStore.loginAction(formState)
+    // 传递验证码数据
+    const loginData = {
+      ...formState,
+      captcha_key: captchaKey.value,
+      x_offset: xOffset.value
+    }
+    
+    const result = await userStore.loginAction(loginData)
     
     if (result.success) {
       message.success(result.message)
@@ -99,6 +149,9 @@ async function handleLogin() {
       router.push(redirect)
     } else {
       message.error(result.message)
+      // 登录失败，重置验证码
+      captchaKey.value = ''
+      xOffset.value = 0
     }
   } finally {
     loading.value = false

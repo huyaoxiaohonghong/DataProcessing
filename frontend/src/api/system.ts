@@ -38,6 +38,19 @@ export const getOperationLogs = (params?: { page?: number; page_size?: number; s
     return apiClient.get<PaginatedResponse<OperationLog>>('/system/operation-logs/', { params })
 }
 
+// ============== 滑动验证码 ==============
+
+export interface CaptchaData {
+    captcha_key: string
+    background: string  // Base64 图片
+    puzzle: string      // Base64 图片
+    y: number          // 拼图 Y 坐标
+}
+
+export const getCaptcha = () => {
+    return apiClient.get<{ code: number; message: string; data: CaptchaData }>('/system/captcha/')
+}
+
 // ============== 部门管理 ==============
 
 export interface Department {

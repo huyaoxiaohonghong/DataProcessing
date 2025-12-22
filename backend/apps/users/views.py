@@ -64,6 +64,27 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
+        # 1. 验证滑动验证码
+        from apps.system.services.captcha import CaptchaService
+        
+        captcha_key = request.data.get('captcha_key')
+        x_offset = request.data.get('x_offset')
+        
+        if not captcha_key or x_offset is None:
+            return Response({
+                'code': 400,
+                'message': '请完成滑动验证'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 验证滑动位置
+        success, message = CaptchaService.verify_captcha(captcha_key, int(x_offset))
+        if not success:
+            return Response({
+                'code': 400,
+                'message': message
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # 2. 验证用户名密码
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         

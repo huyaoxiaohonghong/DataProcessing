@@ -354,3 +354,32 @@ class RolePermissionViewSet(viewsets.ModelViewSet):
             'code': 200,
             'message': '设置成功'
         })
+
+
+# ============== 滑动验证码 ==============
+
+from rest_framework.views import APIView
+
+class CaptchaView(APIView):
+    """
+    滑动验证码接口
+    GET /api/system/captcha/ - 获取验证码
+    """
+    permission_classes = [permissions.AllowAny]
+    
+    def get(self, request):
+        """获取滑动验证码"""
+        try:
+            from apps.system.services.captcha import CaptchaService
+            captcha_data = CaptchaService.generate_captcha()
+            return Response({
+                'code': 200,
+                'message': '获取成功',
+                'data': captcha_data
+            })
+        except Exception as e:
+            return Response({
+                'code': 500,
+                'message': f'生成验证码失败: {str(e)}'
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
