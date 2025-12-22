@@ -429,7 +429,8 @@ async function handlePreview(record: FileInfo) {
             
             if (lines.length > 0) {
               // 第一行作为表头
-              const headers = lines[0].split(',').map((h, i) => ({
+              // 第一行作为表头
+              const headers = (lines[0] || '').split(',').map((h, i) => ({
                 title: h.trim() || `列${i + 1}`,
                 dataIndex: `col${i}`,
                 key: `col${i}`,
@@ -452,7 +453,13 @@ async function handlePreview(record: FileInfo) {
             
             // 读取第一个工作表
             const firstSheetName = workbook.SheetNames[0]
+            if (!firstSheetName) {
+                throw new Error('Excel 文件中没有工作表')
+            }
             const worksheet = workbook.Sheets[firstSheetName]
+            if (!worksheet) {
+                throw new Error('无法读取工作表内容')
+            }
             
             // 转换为 JSON
             const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][]

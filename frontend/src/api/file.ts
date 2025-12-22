@@ -3,6 +3,7 @@
  * File management APIs
  */
 import apiClient from './client'
+import type { ApiResponse, PaginatedResponse } from './types'
 
 export interface FileCategory {
     id: number
@@ -67,18 +68,7 @@ export interface FileStatistics {
     type_stats: Record<string, { count: number; size: number }>
 }
 
-export interface ApiResponse<T = any> {
-    code: number
-    message: string
-    data: T
-}
 
-export interface PaginatedResponse<T> {
-    count: number
-    next: string | null
-    previous: string | null
-    results: T[]
-}
 
 // 文件分类 API
 export const getCategories = () => {

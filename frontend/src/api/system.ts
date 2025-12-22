@@ -3,7 +3,7 @@
  * System management APIs (Logs)
  */
 import apiClient from './client'
-import { type PaginatedResponse } from './file'
+import { type PaginatedResponse } from './types'
 
 export interface LoginLog {
     id: number

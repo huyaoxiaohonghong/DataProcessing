@@ -3,6 +3,7 @@
  * User authentication and profile APIs
  */
 import apiClient from './client'
+import type { ApiResponse } from './types'
 
 export interface LoginParams {
     username: string
@@ -50,11 +51,7 @@ export interface AuthResponse {
     }
 }
 
-export interface ApiResponse<T = any> {
-    code: number
-    message: string
-    data: T
-}
+
 
 // 用户登录
 export const login = (params: LoginParams) => {

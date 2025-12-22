@@ -4,10 +4,11 @@
  * 使用 sessionStorage 支持同一浏览器多标签页独立登录
  */
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosResponse } from 'axios'
+import { config } from '@/config/env'
 
 // 创建 axios 实例
 const apiClient: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000/api',
+  baseURL: config.apiBaseUrl ? `${config.apiBaseUrl}${config.apiPrefix}` : config.apiPrefix,
   timeout: 30000,  // 增加超时时间支持大文件
   headers: {
     'Content-Type': 'application/json',

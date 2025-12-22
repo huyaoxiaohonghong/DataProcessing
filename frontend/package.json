@@ -4,9 +4,13 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vue-tsc -b && vite build",
-    "preview": "vite preview"
+    "dev": "vite --mode development",
+    "build": "vue-tsc -b && vite build --mode production",
+    "build:dev": "vue-tsc -b && vite build --mode development",
+    "build:prod": "vue-tsc -b && vite build --mode production",
+    "preview": "vite preview",
+    "preview:dev": "vite preview --mode development",
+    "preview:prod": "vite preview --mode production"
   },
   "dependencies": {
     "@ant-design/icons-vue": "^7.0.1",
