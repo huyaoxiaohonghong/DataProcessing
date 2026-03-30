@@ -1,20 +1,14 @@
 <template>
   <div class="mapping-edit">
     <!-- 页面头部 -->
-    <div class="page-header">
-      <a-page-header
-        :title="isEdit ? '编辑映射配置' : '新建映射配置'"
-        @back="$router.back()"
-      >
-        <template #extra>
-          <a-space>
-            <a-button @click="$router.back()">取消</a-button>
-            <a-button type="primary" :loading="saving" @click="handleSave">
-              保存配置
-            </a-button>
-          </a-space>
-        </template>
-      </a-page-header>
+    <div class="header-actions">
+      <h2 class="page-title">{{ isEdit ? '编辑映射配置' : '新建映射配置' }}</h2>
+      <a-space>
+        <a-button @click="$router.back()">取消</a-button>
+        <a-button type="primary" :loading="saving" @click="handleSave">
+          保存配置
+        </a-button>
+      </a-space>
     </div>
 
     <!-- 步骤条 -->
@@ -712,10 +706,19 @@ onMounted(async () => {
   padding: 0;
 }
 
-.page-header {
-  background: #fff;
-  margin: -24px -24px 16px -24px;
-  padding: 0;
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Fira Code', monospace;
+  color: var(--color-text);
 }
 
 .steps-card {
@@ -726,166 +729,28 @@ onMounted(async () => {
   margin-bottom: 16px;
 }
 
-.mapping-canvas-container {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
 .mapping-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  margin-bottom: 16px;
 }
 
 .mapping-toolbar :deep(.ant-card-body) {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 12px 24px;
 }
 
-.mapping-stats {
+.toolbar-content {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.mapping-visual-area {
-  position: relative;
-  display: flex;
-  gap: 24px;
-  background: linear-gradient(135deg, #f5f7fa 0%, #e4e8ec 100%);
-  border-radius: 12px;
-  padding: 24px;
-  min-height: 500px;
-  overflow: hidden;
+.mapping-table-card {
+  margin-bottom: 16px;
 }
 
-.connection-svg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.connection-line {
-  fill: none;
-  stroke: #1890ff;
-  stroke-width: 2;
-  opacity: 0.7;
-  pointer-events: stroke;
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-.connection-line:hover {
-  stroke-width: 3;
-  opacity: 1;
-}
-
-.connection-line.active {
-  stroke: #52c41a;
-  stroke-width: 3;
-  opacity: 1;
-}
-
-.temp-connection-line {
-  fill: none;
-  stroke: #1890ff;
-  stroke-width: 2;
-  stroke-dasharray: 5, 5;
-  opacity: 0.5;
-}
-
-.field-column {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  z-index: 2;
-}
-
-.column-header {
+.target-field-cell {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 16px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  font-weight: 600;
-}
-
-.source-column .column-header {
-  background: linear-gradient(135deg, #1890ff 0%, #096dd9 100%);
-}
-
-.reference-column .column-header {
-  background: linear-gradient(135deg, #722ed1 0%, #531dab 100%);
-}
-
-.target-column .column-header {
-  background: linear-gradient(135deg, #52c41a 0%, #389e0d 100%);
-}
-
-.field-list {
-  flex: 1;
-  overflow-y: auto;
-  padding: 8px;
-  max-height: 400px;
-}
-
-.field-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 4px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  border: 2px solid transparent;
-  background: #fafafa;
-}
-
-.field-item:hover {
-  background: #e6f7ff;
-  border-color: #91d5ff;
-}
-
-.field-item.selected {
-  background: #e6f7ff;
-  border-color: #1890ff;
-  box-shadow: 0 2px 8px rgba(24, 144, 255, 0.3);
-}
-
-.field-item.mapped {
-  background: #f6ffed;
-  border-color: #b7eb8f;
-}
-
-.field-item.mapped:hover {
-  border-color: #52c41a;
-}
-
-.source-field.selected {
-  border-color: #1890ff;
-  background: #e6f7ff;
-}
-
-.reference-field.selected {
-  border-color: #722ed1;
-  background: #f9f0ff;
-}
-
-.target-field.selected {
-  border-color: #52c41a;
-  background: #f6ffed;
 }
 
 .field-index {
@@ -894,11 +759,12 @@ onMounted(async () => {
   justify-content: center;
   width: 24px;
   height: 24px;
-  background: #e8e8e8;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
   font-size: 12px;
-  color: #666;
+  color: var(--color-text-muted);
   flex-shrink: 0;
+  font-family: 'Fira Code', monospace;
 }
 
 .field-name {
@@ -906,52 +772,38 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--color-text);
 }
 
-.mapped-icon {
-  color: #52c41a;
-  font-size: 16px;
+.status-tag {
   flex-shrink: 0;
 }
 
-.mapping-rules-card {
-  margin-top: 16px;
+.rule-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.mapping-rules-card :deep(.ant-table) {
+.rule-desc {
+  color: var(--color-text-muted);
   font-size: 13px;
 }
 
-/* 滚动条美化 */
-.field-list::-webkit-scrollbar {
-  width: 6px;
+.text-gray {
+  color: var(--color-text-dim);
+  font-size: 13px;
 }
 
-.field-list::-webkit-scrollbar-track {
-  background: #f0f0f0;
-  border-radius: 3px;
+.drawer-header-info {
+  padding: 0 0 16px;
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: 16px;
+  color: var(--color-text-muted);
 }
 
-.field-list::-webkit-scrollbar-thumb {
-  background: #ccc;
-  border-radius: 3px;
-}
-
-.field-list::-webkit-scrollbar-thumb:hover {
-  background: #999;
-}
-
-/* 动画 */
-@keyframes pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(24, 144, 255, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(24, 144, 255, 0);
-  }
-}
-
-.field-item.selected {
-  animation: pulse 1.5s infinite;
+.drawer-header-info strong {
+  color: var(--color-text);
+  font-family: 'Fira Code', monospace;
 }
 </style>

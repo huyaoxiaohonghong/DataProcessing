@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
       __APP_ENV__: JSON.stringify(mode),
     },
     server: {
+      host: '0.0.0.0',
       port: 5173,
       proxy: {
         '/api': {
@@ -30,6 +31,15 @@ export default defineConfig(({ mode }) => {
     build: {
       // 生产环境配置
       sourcemap: mode !== 'production',
+      rollupOptions: {
+        output: {
+          // 分包策略：将大型依赖拆分为独立 chunk
+          manualChunks: {
+            'ant-design-vue': ['ant-design-vue', '@ant-design/icons-vue'],
+            'vue-vendor': ['vue', 'vue-router', 'pinia'],
+          },
+        },
+      },
     },
   }
 })

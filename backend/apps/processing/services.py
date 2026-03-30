@@ -3,320 +3,326 @@
 Excel parsing and data processing service
 """
 import io
-import os
-from datetime import datetime
+import logging
+import re
+from itertools import product
+
 from django.core.files.base import ContentFile
+from django.utils import timezone
 from openpyxl import load_workbook, Workbook
 from .models import DataMapping, ProcessingTask
+
+logger = logging.getLogger('apps')
+
+# 预编译正则
+_FIELD_PATTERN = re.compile(r'\{([^}]+)\}')
+_ALLOWED_EXPR_CHARS = frozenset('0123456789.+-*/() ')
 
 
 class ExcelService:
     """Excel 文件处理服务"""
     
     @staticmethod
+    def _read_file_to_bytes(file_obj):
+        """从存储后端读取文件到 BytesIO（兼容本地和 S3 存储）"""
+        file_field = file_obj.file
+        file_field.open('rb')
+        try:
+            content = file_field.read()
+        finally:
+            file_field.close()
+        return io.BytesIO(content)
+
+    @staticmethod
     def parse_file_fields(file_obj):
         """
         解析 Excel 文件，获取所有 Sheet 及其字段
         返回格式: [{'sheet_name': 'Sheet1', 'fields': [{'name': 'col1', 'index': 0}, ...]}]
         """
+        file_bytes = ExcelService._read_file_to_bytes(file_obj)
+        wb = load_workbook(file_bytes, read_only=True, data_only=True)
+        
         try:
-            file_path = file_obj.file.path
-            wb = load_workbook(file_path, read_only=True, data_only=True)
-            
             result = []
             for sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
                 fields = []
                 
-                # 读取第一行作为字段名
                 first_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True), None)
                 if first_row:
                     for index, cell_value in enumerate(first_row):
                         if cell_value is not None:
-                            fields.append({
-                                'name': str(cell_value),
-                                'index': index
-                            })
+                            fields.append({'name': str(cell_value), 'index': index})
                 
-                result.append({
-                    'sheet_name': sheet_name,
-                    'fields': fields
-                })
+                result.append({'sheet_name': sheet_name, 'fields': fields})
             
-            wb.close()
             return result
-            
-        except Exception as e:
-            raise Exception(f"解析文件失败: {str(e)}")
+        finally:
+            wb.close()
     
     @staticmethod
     def get_sheet_data(file_obj, sheet_name=None):
-        """
-        获取 Sheet 的所有数据
-        返回格式: {'headers': [...], 'rows': [[...], ...]}
-        """
+        """获取 Sheet 的所有数据"""
+        file_bytes = ExcelService._read_file_to_bytes(file_obj)
+        wb = load_workbook(file_bytes, read_only=True, data_only=True)
+        
         try:
-            file_path = file_obj.file.path
-            wb = load_workbook(file_path, read_only=True, data_only=True)
-            
-            # 如果没有指定 sheet，使用第一个
-            if sheet_name:
-                ws = wb[sheet_name]
-            else:
-                ws = wb.active
-            
+            ws = wb[sheet_name] if sheet_name else wb.active
             rows = list(ws.iter_rows(values_only=True))
-            wb.close()
             
             if not rows:
                 return {'headers': [], 'rows': []}
             
             headers = [str(cell) if cell else '' for cell in rows[0]]
-            data_rows = [[cell for cell in row] for row in rows[1:]]
-            
-            return {
-                'headers': headers,
-                'rows': data_rows
-            }
-            
-        except Exception as e:
-            raise Exception(f"读取数据失败: {str(e)}")
+            data_rows = [list(row) for row in rows[1:]]
+            return {'headers': headers, 'rows': data_rows}
+        finally:
+            wb.close()
+
+    @staticmethod
+    def read_all_sheets(file_obj):
+        """读取文件所有 Sheet 数据，返回 {sheet_name: {headers, rows}}"""
+        file_bytes = ExcelService._read_file_to_bytes(file_obj)
+        wb = load_workbook(file_bytes, read_only=True, data_only=True)
+        
+        try:
+            sheets = {}
+            for sheet_name in wb.sheetnames:
+                ws = wb[sheet_name]
+                rows = list(ws.iter_rows(values_only=True))
+                if rows:
+                    headers = [str(cell) if cell else '' for cell in rows[0]]
+                    data_rows = [list(row) for row in rows[1:]]
+                    sheets[sheet_name] = {'headers': headers, 'rows': data_rows}
+            return sheets
+        finally:
+            wb.close()
 
 
 class DataProcessingService:
     """数据处理服务"""
+    
+    PROGRESS_SAVE_INTERVAL = 100
     
     @staticmethod
     def execute_task(task: ProcessingTask):
         """执行数据处理任务"""
         try:
             task.status = 'running'
-            task.started_at = datetime.now()
-            task.save()
+            task.started_at = timezone.now()
+            task.save(update_fields=['status', 'started_at'])
             
             mapping = task.mapping
             
             # 读取源文件数据
             source_data = ExcelService.get_sheet_data(
-                mapping.source_file, 
-                mapping.source_sheet or None
+                mapping.source_file, mapping.source_sheet or None
             )
             
-            # 读取对照文件所有Sheets数据（如果有）
-            # 格式: {'Sheet名': {'headers': [...], 'rows': [...]}, ...}
+            # 读取对照文件所有 Sheets 数据
             reference_sheets = {}
             if mapping.reference_file:
-                file_path = mapping.reference_file.file.path
-                wb = load_workbook(file_path, read_only=True, data_only=True)
-                for sheet_name in wb.sheetnames:
-                    ws = wb[sheet_name]
-                    rows = list(ws.iter_rows(values_only=True))
-                    if rows:
-                        headers = [str(cell) if cell else '' for cell in rows[0]]
-                        data_rows = [[cell for cell in row] for row in rows[1:]]
-                        reference_sheets[sheet_name] = {
-                            'headers': headers,
-                            'rows': data_rows
-                        }
-                wb.close()
+                reference_sheets = ExcelService.read_all_sheets(mapping.reference_file)
             
-            # 获取字段映射
+            # 获取字段映射，预构建对照表索引
             field_mappings = list(mapping.fields.all().order_by('sort_order'))
+            ref_indexes = DataProcessingService._build_reference_indexes(
+                field_mappings, reference_sheets
+            )
             
             task.total_rows = len(source_data['rows'])
-            task.save()
+            task.save(update_fields=['total_rows'])
             
-            # 生成目标数据
             target_headers = [fm.target_field for fm in field_mappings]
             target_rows = []
             
             for row_idx, source_row in enumerate(source_data['rows']):
                 try:
-                    # _process_row 现在返回行列表（一行源数据可能产生多行目标数据）
                     result_rows = DataProcessingService._process_row(
-                        source_row, 
-                        source_data['headers'],
-                        reference_sheets,
-                        field_mappings
+                        source_row, source_data['headers'],
+                        reference_sheets, field_mappings, ref_indexes
                     )
                     target_rows.extend(result_rows)
                     task.success_rows += 1
                 except Exception as e:
                     task.error_rows += 1
+                    logger.debug(f"处理第{row_idx+1}行失败: {e}")
                 
                 task.processed_rows = row_idx + 1
-                if row_idx % 100 == 0:
-                    task.save()
+                if row_idx % DataProcessingService.PROGRESS_SAVE_INTERVAL == 0:
+                    task.save(update_fields=['processed_rows', 'success_rows', 'error_rows'])
             
-            # 生成结果文件
             result_file = DataProcessingService._create_result_file(
-                target_headers, 
-                target_rows,
-                task.name
+                target_headers, target_rows, task.name
             )
             
             task.result_file.save(
-                f"{task.name}_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx",
+                f"{task.name}_{timezone.now().strftime('%Y%m%d%H%M%S')}.xlsx",
                 result_file
             )
             task.status = 'completed'
-            task.completed_at = datetime.now()
-            task.save()
-            
+            task.completed_at = timezone.now()
+            task.save(update_fields=[
+                'status', 'completed_at', 'processed_rows',
+                'success_rows', 'error_rows', 'result_file'
+            ])
             return True
             
         except Exception as e:
+            logger.exception(f"任务执行失败: task_id={task.id}")
             task.status = 'failed'
             task.error_message = str(e)
-            task.completed_at = datetime.now()
-            task.save()
+            task.completed_at = timezone.now()
+            task.save(update_fields=['status', 'error_message', 'completed_at'])
             return False
     
     @staticmethod
-    def _process_row(source_row, source_headers, reference_sheets, field_mappings):
-        """处理单行数据，可能返回多行结果
+    def _build_reference_indexes(field_mappings, reference_sheets):
+        """为 lookup 类型字段预构建对照表索引，避免每行重复遍历"""
+        indexes = {}
         
-        Args:
-            source_row: 源数据行
-            source_headers: 源数据表头
-            reference_sheets: 对照表字典 {'Sheet名': {'headers': [...], 'rows': [...]}}
-            field_mappings: 字段映射列表
+        for fm in field_mappings:
+            if fm.field_type not in ['lookup', 'source_ref_target']:
+                continue
+            if not fm.reference_sheet or fm.reference_sheet not in reference_sheets:
+                continue
             
-        Returns:
-            目标数据行列表（一行源数据可能产生多行目标数据）
-        """
-        from itertools import product
+            cache_key = (fm.reference_sheet, fm.reference_name_column, fm.reference_code_column)
+            if cache_key in indexes:
+                continue
+            
+            ref_data = reference_sheets[fm.reference_sheet]
+            headers = ref_data.get('headers', [])
+            rows = ref_data.get('rows', [])
+            
+            name_col_idx = -1
+            code_col_idx = -1
+            for idx, header in enumerate(headers):
+                if header == fm.reference_name_column:
+                    name_col_idx = idx
+                if header == fm.reference_code_column:
+                    code_col_idx = idx
+            
+            if name_col_idx < 0 or code_col_idx < 0:
+                continue
+            
+            index = {}
+            for row in rows:
+                if name_col_idx < len(row) and row[name_col_idx] is not None:
+                    key = str(row[name_col_idx]).strip()
+                    if code_col_idx < len(row):
+                        index.setdefault(key, []).append(row[code_col_idx])
+            
+            indexes[cache_key] = index
         
-        # 构建源数据字典，方便按字段名查找
-        source_dict = {}
-        for idx, header in enumerate(source_headers):
-            if idx < len(source_row):
-                source_dict[header] = source_row[idx]
+        return indexes
+    
+    @staticmethod
+    def _process_row(source_row, source_headers, reference_sheets, field_mappings, ref_indexes=None):
+        """处理单行数据，可能返回多行结果"""
+        source_dict = {
+            header: source_row[idx]
+            for idx, header in enumerate(source_headers)
+            if idx < len(source_row)
+        }
         
-        # 收集每个字段的值（可能是列表）
         field_values = []
-        field_is_list = []  # 记录哪些字段是列表（需要展开）
+        field_is_list = []
         
         for fm in field_mappings:
             value = None
             is_list = False
             
-            # 1. 直接映射 (direct) 或旧的 source_to_target
             if fm.field_type in ['direct', 'source_to_target']:
                 if fm.source_field and fm.source_field in source_dict:
                     value = source_dict[fm.source_field]
-                elif fm.source_field_index >= 0 and fm.source_field_index < len(source_row):
+                elif 0 <= fm.source_field_index < len(source_row):
                     value = source_row[fm.source_field_index]
             
-            # 2. 对照表转换 (lookup) 或旧的 source_ref_target
             elif fm.field_type in ['lookup', 'source_ref_target']:
-                # 先从源数据获取查找键
                 lookup_key = None
                 if fm.source_field and fm.source_field in source_dict:
                     lookup_key = source_dict[fm.source_field]
-                elif fm.source_field_index >= 0 and fm.source_field_index < len(source_row):
+                elif 0 <= fm.source_field_index < len(source_row):
                     lookup_key = source_row[fm.source_field_index]
                 
-                # 在对照表中查找（返回列表）
-                if lookup_key is not None and fm.reference_sheet and fm.reference_sheet in reference_sheets:
-                    matched_values = DataProcessingService._lookup_reference_v2(
-                        lookup_key,
-                        reference_sheets[fm.reference_sheet],
-                        fm.reference_name_column,
-                        fm.reference_code_column
-                    )
-                    # matched_values 是一个列表
-                    if len(matched_values) > 1:
-                        value = matched_values
+                if lookup_key is not None and fm.reference_sheet:
+                    cache_key = (fm.reference_sheet, fm.reference_name_column, fm.reference_code_column)
+                    
+                    if ref_indexes and cache_key in ref_indexes:
+                        matched = ref_indexes[cache_key].get(str(lookup_key).strip(), [])
+                    elif fm.reference_sheet in reference_sheets:
+                        matched = DataProcessingService._lookup_reference_v2(
+                            lookup_key, reference_sheets[fm.reference_sheet],
+                            fm.reference_name_column, fm.reference_code_column
+                        )
+                    else:
+                        matched = []
+                    
+                    if len(matched) > 1:
+                        value = matched
                         is_list = True
                     else:
-                        value = matched_values[0] if matched_values else lookup_key
+                        value = matched[0] if matched else lookup_key
                 else:
                     value = lookup_key
             
-            # 3. 计算字段 (computed)
             elif fm.field_type == 'computed':
                 if fm.compute_expression:
                     value = DataProcessingService._evaluate_expression(
-                        fm.compute_expression,
-                        source_dict
+                        fm.compute_expression, source_dict
                     )
             
-            # 4. 默认值 (default)
             elif fm.field_type == 'default':
                 value = fm.default_value
             
-            # 5. 旧的 ref_to_target (直接从对照表获取，兼容旧数据)
             elif fm.field_type == 'ref_to_target':
                 if fm.reference_sheet and fm.reference_sheet in reference_sheets:
                     ref_data = reference_sheets[fm.reference_sheet]
                     ref_idx = fm.reference_field_index
-                    if ref_data['rows'] and ref_idx >= 0 and ref_idx < len(ref_data['rows'][0]):
+                    if ref_data['rows'] and 0 <= ref_idx < len(ref_data['rows'][0]):
                         value = ref_data['rows'][0][ref_idx]
             
-            # 应用转换规则
-            if fm.transform_rule and not is_list:
-                value = DataProcessingService._apply_transform(value, fm.transform_rule)
-            elif fm.transform_rule and is_list:
-                value = [DataProcessingService._apply_transform(v, fm.transform_rule) for v in value]
+            if fm.transform_rule:
+                if is_list:
+                    value = [DataProcessingService._apply_transform(v, fm.transform_rule) for v in value]
+                else:
+                    value = DataProcessingService._apply_transform(value, fm.transform_rule)
             
             field_values.append(value)
             field_is_list.append(is_list)
         
-        # 如果没有列表字段，直接返回单行结果
         if not any(field_is_list):
             return [field_values]
         
-        # 有列表字段，需要展开为多行
-        # 将非列表值包装为单元素列表，以便使用笛卡尔积
-        expanded_values = []
-        for i, val in enumerate(field_values):
-            if field_is_list[i]:
-                expanded_values.append(val)
-            else:
-                expanded_values.append([val])
-        
-        # 使用笛卡尔积生成所有组合
-        result_rows = [list(combo) for combo in product(*expanded_values)]
-        
-        return result_rows
+        expanded = [
+            val if field_is_list[i] else [val]
+            for i, val in enumerate(field_values)
+        ]
+        return [list(combo) for combo in product(*expanded)]
     
     @staticmethod
     def _lookup_reference(source_value, reference_data, lookup_col, result_col):
-        """在对照表中查找匹配值（旧版，使用列索引）"""
+        """在对照表中查找匹配值（旧版）"""
         if not source_value:
             return source_value
-        
         for row in reference_data['rows']:
             if lookup_col < len(row) and row[lookup_col] == source_value:
                 if result_col < len(row):
                     return row[result_col]
-        
         return source_value
     
     @staticmethod
     def _lookup_reference_v2(lookup_key, reference_data, name_column, code_column):
-        """在对照表中查找所有匹配值（新版，使用列名）
-        
-        Args:
-            lookup_key: 查找键值（源数据中的值）
-            reference_data: 对照表数据 {'headers': [...], 'rows': [...]}
-            name_column: 名称列（用于匹配的列名）
-            code_column: 编码列（返回结果的列名）
-        
-        Returns:
-            匹配到的编码值列表，如果未找到则返回包含原值的列表
-        """
+        """在对照表中查找所有匹配值（新版）"""
         if lookup_key is None:
             return [lookup_key]
         
         headers = reference_data.get('headers', [])
         rows = reference_data.get('rows', [])
         
-        # 查找列索引
         name_col_idx = -1
         code_col_idx = -1
-        
         for idx, header in enumerate(headers):
             if header == name_column:
                 name_col_idx = idx
@@ -324,12 +330,10 @@ class DataProcessingService:
                 code_col_idx = idx
         
         if name_col_idx < 0 or code_col_idx < 0:
-            return [lookup_key]  # 找不到列，返回包含原值的列表
+            return [lookup_key]
         
-        # 在数据中查找所有匹配行
         lookup_str = str(lookup_key).strip()
         matched_values = []
-        
         for row in rows:
             if name_col_idx < len(row):
                 cell_value = row[name_col_idx]
@@ -337,88 +341,55 @@ class DataProcessingService:
                     if code_col_idx < len(row):
                         matched_values.append(row[code_col_idx])
         
-        # 如果找到匹配，返回所有匹配值；否则返回原值
         return matched_values if matched_values else [lookup_key]
     
     @staticmethod
     def _apply_transform(value, rule):
         """应用数据转换规则"""
-        if not rule:
+        if not rule or value is None:
             return value
         
         rule_type = rule.get('type')
+        str_value = str(value)
         
         if rule_type == 'uppercase':
-            return str(value).upper() if value else value
+            return str_value.upper()
         elif rule_type == 'lowercase':
-            return str(value).lower() if value else value
+            return str_value.lower()
         elif rule_type == 'prefix':
-            prefix = rule.get('value', '')
-            return f"{prefix}{value}" if value else value
+            return f"{rule.get('value', '')}{value}"
         elif rule_type == 'suffix':
-            suffix = rule.get('value', '')
-            return f"{value}{suffix}" if value else value
+            return f"{value}{rule.get('value', '')}"
         elif rule_type == 'replace':
-            old_val = rule.get('old', '')
-            new_val = rule.get('new', '')
-            return str(value).replace(old_val, new_val) if value else value
-        
+            return str_value.replace(rule.get('old', ''), rule.get('new', ''))
         return value
     
     @staticmethod
     def _evaluate_expression(expression, source_dict):
-        """计算表达式
-        
-        支持的格式: {字段名} 会被替换为对应的值
-        例如: {使用月限} / 12
-        
-        Args:
-            expression: 表达式字符串
-            source_dict: 源数据字典 {字段名: 值}
-        
-        Returns:
-            计算结果
-        """
-        import re
-        
+        """计算表达式，支持 {字段名} 引用"""
         if not expression:
             return None
-        
-        # 替换表达式中的字段引用
-        result_expr = expression
-        field_pattern = r'\{([^}]+)\}'
         
         def replace_field(match):
             field_name = match.group(1)
             value = source_dict.get(field_name)
             if value is None:
                 return '0'
-            # 数值类型直接返回
             if isinstance(value, (int, float)):
                 return str(value)
-            # 尝试转换为数值
             try:
                 return str(float(value))
             except (ValueError, TypeError):
                 return '0'
         
-        result_expr = re.sub(field_pattern, replace_field, result_expr)
+        result_expr = _FIELD_PATTERN.sub(replace_field, expression)
         
-        # 安全地计算表达式（只允许数学运算）
         try:
-            # 只允许数字、运算符和括号
-            allowed_chars = set('0123456789.+-*/() ')
-            if not all(c in allowed_chars for c in result_expr):
+            if not all(c in _ALLOWED_EXPR_CHARS for c in result_expr):
                 return None
-            
-            # 计算表达式
             result = eval(result_expr)
-            
-            # 如果结果是浮点数，保留合理的小数位
             if isinstance(result, float):
-                if result == int(result):
-                    return int(result)
-                return round(result, 6)
+                return int(result) if result == int(result) else round(result, 6)
             return result
         except Exception:
             return None
@@ -430,19 +401,12 @@ class DataProcessingService:
         ws = wb.active
         ws.title = "处理结果"
         
-        # 写入表头
-        for col, header in enumerate(headers, 1):
-            ws.cell(row=1, column=col, value=header)
+        ws.append(headers)
+        for row in rows:
+            ws.append(row)
         
-        # 写入数据
-        for row_idx, row in enumerate(rows, 2):
-            for col_idx, value in enumerate(row, 1):
-                ws.cell(row=row_idx, column=col_idx, value=value)
-        
-        # 保存到内存
         output = io.BytesIO()
         wb.save(output)
         wb.close()
         output.seek(0)
-        
         return ContentFile(output.read())

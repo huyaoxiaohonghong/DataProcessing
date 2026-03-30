@@ -5,7 +5,6 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import Antd from 'ant-design-vue'
-import * as Icons from '@ant-design/icons-vue'
 
 import App from './App.vue'
 import router from './router'
@@ -25,11 +24,6 @@ app.use(router)
 // 注册 Ant Design Vue
 app.use(Antd)
 
-// 全局注册图标组件
-for (const [key, component] of Object.entries(Icons)) {
-    if (key !== 'default' && typeof component === 'object') {
-        app.component(key, component as any)
-    }
-}
+// 图标按需在各组件中 import 使用，不再全局注册以减小打包体积
 
 app.mount('#app')

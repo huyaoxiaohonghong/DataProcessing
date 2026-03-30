@@ -89,6 +89,7 @@ class LoginView(APIView):
         serializer.is_valid(raise_exception=True)
         
         user = authenticate(
+            request,
             username=serializer.validated_data['username'],
             password=serializer.validated_data['password']
         )
@@ -229,7 +230,7 @@ class UserViewSet(viewsets.ModelViewSet):
     - 管理员: 可管理用户，但只能设置角色为普通用户
     - 普通用户: 无权限
     """
-    queryset = User.objects.all()
+    queryset = User.objects.select_related('department', 'created_by').all()
     serializer_class = UserAdminSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]

@@ -240,8 +240,9 @@ async function fetchFiles() {
       page_size: pagination.pageSize,
       search: searchText.value
     })
-    fileList.value = res.data.results
-    pagination.total = res.data.count
+    const data = res.data?.data || res.data
+    fileList.value = data.results || []
+    pagination.total = data.pagination?.total || data.count || 0
   } catch (error) {
     message.error('获取文件列表失败')
   } finally {
@@ -380,7 +381,9 @@ function getFileUrl(fileUrl: string) {
   if (fileUrl.startsWith('http')) {
     return fileUrl
   }
-  return `http://127.0.0.1:8000${fileUrl}`
+  // 使用环境配置的 API 地址
+  const baseUrl = import.meta.env.VITE_API_BASE_URL || ''
+  return baseUrl ? `${baseUrl}${fileUrl}` : fileUrl
 }
 
 // 预览处理
@@ -397,7 +400,7 @@ async function handlePreview(record: FileInfo) {
     try {
       const response = await apiClient.get(record.file, {
         responseType: 'text',
-        baseURL: 'http://127.0.0.1:8000'
+        baseURL: import.meta.env.VITE_API_BASE_URL || undefined
       })
       previewContent.value = response.data
     } catch (error) {
@@ -502,10 +505,6 @@ async function handlePreview(record: FileInfo) {
 </script>
 
 <style scoped>
-.file-list-page {
-  padding: 0;
-}
-
 .header-actions {
   display: flex;
   justify-content: space-between;
@@ -516,7 +515,9 @@ async function handlePreview(record: FileInfo) {
 .page-title {
   margin: 0;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'Fira Code', monospace;
+  color: var(--color-text);
 }
 
 .actions {
@@ -530,7 +531,10 @@ async function handlePreview(record: FileInfo) {
   gap: 8px;
 }
 
-.table-card {
-  border-radius: 8px;
+.preview-text pre {
+  background: rgba(255, 255, 255, 0.04) !important;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
 }
 </style>

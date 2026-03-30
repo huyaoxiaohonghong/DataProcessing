@@ -2,10 +2,13 @@
 Redis 缓存工具类
 Cache utilities for data caching with Redis
 """
+import logging
 from django.core.cache import cache
 from functools import wraps
 import json
 import hashlib
+
+logger = logging.getLogger('apps')
 
 
 class CacheKeys:
@@ -72,7 +75,7 @@ class CacheService:
             if keys:
                 conn.delete(*keys)
         except Exception as e:
-            print(f"Delete pattern error: {e}")
+            logger.warning(f"Delete pattern error: {e}")
     
     @staticmethod
     def clear_user_cache(user_id: int = None):

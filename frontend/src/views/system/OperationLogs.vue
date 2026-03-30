@@ -123,25 +123,23 @@ function getMethodColor(method: string) {
 </script>
 
 <style scoped>
-.logs-page {
-  padding: 0;
-}
 .header-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
 }
+
 .page-title {
   margin: 0;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'Fira Code', monospace;
+  color: var(--color-text);
 }
+
 .actions {
   display: flex;
   gap: 16px;
-}
-.table-card {
-  border-radius: 8px;
 }
 </style>

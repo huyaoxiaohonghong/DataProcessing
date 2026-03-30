@@ -204,8 +204,9 @@ async function fetchUsers() {
       search: searchText.value,
       role: filterRole.value
     })
-    userList.value = res.data.results
-    pagination.total = res.data.count
+    const data = res.data?.data || res.data
+    userList.value = data.results || []
+    pagination.total = data.pagination?.total || data.count || 0
   } catch (error) {
     message.error('获取用户列表失败')
   } finally {
@@ -332,25 +333,23 @@ async function handleDelete(record: UserManage) {
 </script>
 
 <style scoped>
-.user-page {
-  padding: 0;
-}
 .header-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
 }
+
 .page-title {
   margin: 0;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'Fira Code', monospace;
+  color: var(--color-text);
 }
+
 .actions {
   display: flex;
   gap: 16px;
-}
-.table-card {
-  border-radius: 8px;
 }
 </style>

@@ -23,27 +23,37 @@ class MappingFieldSerializer(serializers.ModelSerializer):
         ]
 
 
-class DataMappingSerializer(serializers.ModelSerializer):
-    """数据映射配置序列化器"""
+class DataMappingListSerializer(serializers.ModelSerializer):
+    """数据映射列表序列化器（轻量，不含 fields 详情）"""
     status_display = serializers.CharField(source='get_status_display', read_only=True)
-    created_by_name = serializers.SerializerMethodField()
-    source_file_name = serializers.SerializerMethodField()
-    reference_file_name = serializers.SerializerMethodField()
-    target_template_name = serializers.SerializerMethodField()
+    created_by_name = serializers.CharField(source='created_by.username', default=None, read_only=True)
+    source_file_name = serializers.CharField(source='source_file.name', default=None, read_only=True)
+    reference_file_name = serializers.CharField(source='reference_file.name', default=None, read_only=True)
+    target_template_name = serializers.CharField(source='target_template.name', default=None, read_only=True)
+    
+    class Meta:
+        model = DataMapping
+        fields = [
+            'id', 'name', 'description',
+            'source_file', 'source_file_name', 'source_sheet',
+            'reference_file', 'reference_file_name', 'reference_sheet',
+            'target_template', 'target_template_name', 'target_sheet',
+            'status', 'status_display',
+            'created_by', 'created_by_name',
+            'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'created_by', 'created_at', 'updated_at']
+
+
+class DataMappingSerializer(serializers.ModelSerializer):
+    """数据映射配置详情序列化器"""
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    created_by_name = serializers.CharField(source='created_by.username', default=None, read_only=True)
+    source_file_name = serializers.CharField(source='source_file.name', default=None, read_only=True)
+    reference_file_name = serializers.CharField(source='reference_file.name', default=None, read_only=True)
+    target_template_name = serializers.CharField(source='target_template.name', default=None, read_only=True)
     fields = MappingFieldSerializer(many=True, read_only=True)
     task_count = serializers.SerializerMethodField()
-    
-    def get_created_by_name(self, obj):
-        return obj.created_by.username if obj.created_by else None
-    
-    def get_source_file_name(self, obj):
-        return obj.source_file.name if obj.source_file else None
-    
-    def get_reference_file_name(self, obj):
-        return obj.reference_file.name if obj.reference_file else None
-    
-    def get_target_template_name(self, obj):
-        return obj.target_template.name if obj.target_template else None
     
     class Meta:
         model = DataMapping
@@ -85,29 +95,31 @@ class DataMappingCreateSerializer(serializers.ModelSerializer):
         
         mapping = DataMapping.objects.create(**validated_data)
         
-        # 创建字段映射
-        for i, field_data in enumerate(fields_data):
-            field_data['sort_order'] = i
-            MappingField.objects.create(mapping=mapping, **field_data)
+        # 批量创建字段映射
+        if fields_data:
+            field_objects = [
+                MappingField(mapping=mapping, sort_order=i, **fd)
+                for i, fd in enumerate(fields_data)
+            ]
+            MappingField.objects.bulk_create(field_objects)
         
         return mapping
     
     def update(self, instance, validated_data):
         fields_data = validated_data.pop('fields', None)
         
-        # 更新映射配置
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         instance.save()
         
-        # 如果提供了字段数据，则更新字段
         if fields_data is not None:
-            # 删除旧字段
             instance.fields.all().delete()
-            # 创建新字段
-            for i, field_data in enumerate(fields_data):
-                field_data['sort_order'] = i
-                MappingField.objects.create(mapping=instance, **field_data)
+            if fields_data:
+                field_objects = [
+                    MappingField(mapping=instance, sort_order=i, **fd)
+                    for i, fd in enumerate(fields_data)
+                ]
+                MappingField.objects.bulk_create(field_objects)
         
         return instance
 

@@ -338,28 +338,27 @@ async function handleDelete(record: Menu) {
 </script>
 
 <style scoped>
-.menu-page {
-  padding: 0;
-}
 .header-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 24px;
 }
+
 .page-title {
   margin: 0;
   font-size: 24px;
-  font-weight: 600;
+  font-weight: 700;
+  font-family: 'Fira Code', monospace;
+  color: var(--color-text);
 }
+
 .actions {
   display: flex;
   gap: 16px;
 }
-.table-card {
-  border-radius: 8px;
-}
+
 .text-muted {
-  color: #999;
+  color: var(--color-text-dim);
 }
 </style>

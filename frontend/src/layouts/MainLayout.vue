@@ -9,8 +9,8 @@
       theme="dark"
     >
       <div class="logo">
-        <img src="@/assets/vue.svg" alt="Logo" />
-        <span v-show="!collapsed">数据处理系统</span>
+        <div class="logo-icon">D</div>
+        <span v-show="!collapsed" class="logo-text">数据处理系统</span>
       </div>
       
       <a-menu
@@ -30,7 +30,6 @@
           <span>文件管理</span>
         </a-menu-item>
         
-        <!-- 数据处理模块 -->
         <a-sub-menu key="processing">
           <template #icon><SwapOutlined /></template>
           <template #title>数据处理</template>
@@ -52,22 +51,22 @@
         <a-sub-menu v-if="userStore.isAdmin" key="logs">
           <template #icon><FileTextOutlined /></template>
           <template #title>系统日志</template>
-          <a-menu-item key="logs/login" @click="router.push('/logs/login')">
+          <a-menu-item key="logs/login">
             <template #icon><FileProtectOutlined /></template>
             <span>登录日志</span>
           </a-menu-item>
-          <a-menu-item key="logs/operation" @click="router.push('/logs/operation')">
+          <a-menu-item key="logs/operation">
             <template #icon><FileSearchOutlined /></template>
             <span>操作日志</span>
           </a-menu-item>
         </a-sub-menu>
         
-        <a-menu-item v-if="userStore.isAdmin" key="departments" @click="router.push('/departments')">
+        <a-menu-item v-if="userStore.isAdmin" key="departments">
           <template #icon><ApartmentOutlined /></template>
           <span>部门管理</span>
         </a-menu-item>
         
-        <a-menu-item v-if="userStore.isAdmin" key="menus" @click="router.push('/menus')">
+        <a-menu-item v-if="userStore.isAdmin" key="menus">
           <template #icon><MenuOutlined /></template>
           <span>菜单管理</span>
         </a-menu-item>
@@ -117,14 +116,15 @@
 
       <!-- 内容区 -->
       <a-layout-content class="content">
-        <router-view v-slot="{ Component }">
+        <router-view v-slot="{ Component, route: currentRoute }">
           <transition name="fade" mode="out-in">
-            <component :is="Component" />
+            <keep-alive :include="cachedViews">
+              <component :is="Component" :key="currentRoute.path" />
+            </keep-alive>
           </transition>
         </router-view>
       </a-layout-content>
 
-      <!-- 底部 -->
       <a-layout-footer class="footer">
         数据处理系统 ©2025 Created by Antigravity
       </a-layout-footer>
@@ -137,20 +137,10 @@ import { ref, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import {
-  DashboardOutlined,
-  FolderOutlined,
-  TeamOutlined,
-  FileTextOutlined,
-  MenuFoldOutlined,
-  MenuUnfoldOutlined,
-  UserOutlined,
-  LogoutOutlined,
-  FileProtectOutlined,
-  FileSearchOutlined,
-  ApartmentOutlined,
-  MenuOutlined,
-  SwapOutlined,
-  ThunderboltOutlined,
+  DashboardOutlined, FolderOutlined, TeamOutlined, FileTextOutlined,
+  MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined, LogoutOutlined,
+  FileProtectOutlined, FileSearchOutlined, ApartmentOutlined, MenuOutlined,
+  SwapOutlined, ThunderboltOutlined,
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
@@ -159,34 +149,27 @@ const userStore = useUserStore()
 
 const collapsed = ref(false)
 const selectedKeys = ref<string[]>(['dashboard'])
-const openKeys = ref<string[]>(['logs', 'processing']) // 默认展开日志和数据处理菜单
+const openKeys = ref<string[]>(['logs', 'processing'])
+const cachedViews = ref(['Dashboard', 'Files', 'MappingList', 'TaskList'])
 
-// 根据路由设置选中菜单
-watch(
-  () => route.path,
-  (path) => {
-    if (path) {
-      if (path.includes('/logs/login')) selectedKeys.value = ['logs/login']
-      else if (path.includes('/logs/operation')) selectedKeys.value = ['logs/operation']
-      else if (path.includes('/processing/mappings')) selectedKeys.value = ['processing/mappings']
-      else if (path.includes('/processing/tasks')) selectedKeys.value = ['processing/tasks']
-      else selectedKeys.value = [path.split('/')[1] || 'dashboard']
-    }
-  },
-  { immediate: true }
-)
+watch(() => route.path, (path) => {
+  if (path) {
+    if (path.includes('/logs/login')) selectedKeys.value = ['logs/login']
+    else if (path.includes('/logs/operation')) selectedKeys.value = ['logs/operation']
+    else if (path.includes('/processing/mappings')) selectedKeys.value = ['processing/mappings']
+    else if (path.includes('/processing/tasks')) selectedKeys.value = ['processing/tasks']
+    else selectedKeys.value = [path.split('/')[1] || 'dashboard']
+  }
+}, { immediate: true })
 
-// 菜单点击
 function handleMenuClick({ key }: { key: string }) {
   router.push(`/${key}`)
 }
 
-// 退出登录
 async function handleLogout() {
   await userStore.logoutAction()
 }
 
-// 获取用户信息
 onMounted(async () => {
   if (userStore.isLoggedIn && !userStore.userInfo) {
     await userStore.fetchUserInfo()
@@ -200,7 +183,9 @@ onMounted(async () => {
 }
 
 .sider {
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.03) !important;
+  backdrop-filter: blur(20px);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .logo {
@@ -209,51 +194,54 @@ onMounted(async () => {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  margin: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   overflow: hidden;
 }
 
-.logo img {
-  width: 32px;
-  height: 32px;
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fira Code', monospace;
+  font-weight: 700;
+  font-size: 18px;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+  flex-shrink: 0;
 }
 
-.logo span {
-  color: #fff;
-  font-size: 16px;
+.logo-text {
+  color: #F1F5F9;
+  font-size: 15px;
   font-weight: 600;
   white-space: nowrap;
+  font-family: 'Fira Sans', sans-serif;
 }
 
 .header {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.04) !important;
+  backdrop-filter: blur(16px);
   padding: 0 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-}
-
-.header-left {
-  display: flex;
-  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .trigger {
   font-size: 18px;
   cursor: pointer;
-  transition: color 0.3s;
+  color: var(--color-text-muted);
+  transition: color var(--transition-smooth);
   padding: 0 12px;
 }
 
 .trigger:hover {
-  color: #1890ff;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
+  color: var(--color-primary);
 }
 
 .user-info {
@@ -262,40 +250,32 @@ onMounted(async () => {
   gap: 8px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 4px;
-  transition: background 0.3s;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-smooth);
 }
 
 .user-info:hover {
-  background: #f5f5f5;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .username {
-  color: #333;
+  color: var(--color-text);
 }
 
 .content {
   margin: 24px;
   padding: 24px;
-  background: #fff;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: var(--radius-lg);
   min-height: calc(100vh - 64px - 70px - 48px);
 }
 
 .footer {
   text-align: center;
-  color: #999;
+  color: var(--color-text-dim);
   background: transparent;
-}
-
-/* 路由切换动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
+  font-size: 13px;
 }
 </style>

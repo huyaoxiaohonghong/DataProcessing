@@ -10,23 +10,31 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 加载 .env 文件
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-dqrz$*#8&8y$rtsi03#*e+wslhn$6=df69mc5*aq@ai+q2ga0q'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-change-me-in-production')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv('DJANGO_DEBUG', 'False').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    h.strip() for h in os.getenv('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    if h.strip()
+]
 
 
 # Application definition
@@ -43,6 +51,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'django_filters',
     'corsheaders',
+    'storages',
     # Local apps
     'apps.users',
     'apps.files',
@@ -88,13 +97,13 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'data_processing',
-        'USER': 'root',
-        'PASSWORD': '123456',
-        'HOST': '149.88.74.178',
-        'PORT': '3306',
-        'CONN_MAX_AGE': 0,  # 每次请求使用新连接，避免连接超时问题
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.mysql'),
+        'NAME': os.getenv('DB_NAME', 'data_processing'),
+        'USER': os.getenv('DB_USER', 'root'),
+        'PASSWORD': os.getenv('DB_PASSWORD', ''),
+        'HOST': os.getenv('DB_HOST', 'localhost'),
+        'PORT': os.getenv('DB_PORT', '3306'),
+        'CONN_MAX_AGE': 600,  # 连接复用 10 分钟，减少连接开销
         'CONN_HEALTH_CHECKS': True,  # 启用连接健康检查
         'OPTIONS': {
             'charset': 'utf8mb4',
@@ -108,16 +117,19 @@ DATABASES = {
 
 
 # Redis 缓存配置
+_redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
+_redis_password = os.getenv('REDIS_PASSWORD', '')
+
 CACHES = {
     'default': {
         'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': 'redis://149.88.74.178:6379/0',
+        'LOCATION': _redis_url,
         'OPTIONS': {
             'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'PASSWORD': '123456',
             'CONNECTION_POOL_KWARGS': {'max_connections': 100},
             'SOCKET_CONNECT_TIMEOUT': 5,
             'SOCKET_TIMEOUT': 5,
+            **({"PASSWORD": _redis_password} if _redis_password else {}),
         },
         'KEY_PREFIX': 'dps',  # 缓存键前缀
         'TIMEOUT': 300,  # 默认缓存超时时间（秒）
@@ -150,9 +162,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
 
-LANGUAGE_CODE = 'en-us'
+LANGUAGE_CODE = 'zh-hans'
 
-TIME_ZONE = 'UTC'
+TIME_ZONE = 'Asia/Shanghai'
 
 USE_I18N = True
 
@@ -165,12 +177,52 @@ USE_TZ = True
 STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
-# Media files (User uploads)
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ============================================================
+# 文件存储配置 — S3 对象存储 / 本地存储
+# ============================================================
+USE_S3 = os.getenv('USE_S3', 'false').lower() in ('true', '1', 'yes')
+
+if USE_S3:
+    # S3 兼容对象存储 (缤纷云 Bitiful)
+    STORAGES = {
+        'default': {
+            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
+            'OPTIONS': {
+                'access_key': os.getenv('S3_ACCESS_KEY', ''),
+                'secret_key': os.getenv('S3_SECRET_KEY', ''),
+                'bucket_name': os.getenv('S3_BUCKET_NAME', ''),
+                'endpoint_url': os.getenv('S3_ENDPOINT_URL', 'https://s3.bitiful.net'),
+                'region_name': os.getenv('S3_REGION_NAME', 'cn-east-1'),
+                'custom_domain': os.getenv('S3_CUSTOM_DOMAIN', '') or None,
+                'file_overwrite': False,
+                'default_acl': 'private',
+                'querystring_auth': True,
+                'querystring_expire': 3600,  # 预签名 URL 有效期 1h
+                'object_parameters': {
+                    'CacheControl': 'max-age=86400',
+                },
+            },
+        },
+        'staticfiles': {
+            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
+        },
+    }
+
+    # Media URL 配置
+    _s3_custom_domain = os.getenv('S3_CUSTOM_DOMAIN', '')
+    _s3_bucket = os.getenv('S3_BUCKET_NAME', '')
+    _s3_endpoint = os.getenv('S3_ENDPOINT_URL', 'https://s3.bitiful.net')
+    if _s3_custom_domain:
+        MEDIA_URL = f'https://{_s3_custom_domain}/'
+    else:
+        MEDIA_URL = f'{_s3_endpoint}/{_s3_bucket}/'
+else:
+    # 本地文件存储 (开发环境)
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'
@@ -186,8 +238,9 @@ REST_FRAMEWORK = {
     'DEFAULT_FILTER_BACKENDS': (
         'django_filters.rest_framework.DjangoFilterBackend',
     ),
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'DEFAULT_PAGINATION_CLASS': 'utils.pagination.StandardPagination',
     'PAGE_SIZE': 10,
+    'EXCEPTION_HANDLER': 'utils.exceptions.custom_exception_handler',
 }
 
 # Simple JWT Configuration
@@ -200,5 +253,54 @@ SIMPLE_JWT = {
 }
 
 # CORS Configuration
-CORS_ALLOW_ALL_ORIGINS = True  # Development only
+_cors_origins = os.getenv('CORS_ALLOWED_ORIGINS', '')
+if _cors_origins:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+else:
+    # 仅开发环境回退到允许所有来源
+    CORS_ALLOW_ALL_ORIGINS = DEBUG
+
 CORS_ALLOW_CREDENTIALS = True
+
+# 日志配置
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': BASE_DIR / 'logs' / 'django.log',
+            'formatter': 'verbose',
+            'encoding': 'utf-8',
+            'maxBytes': 10 * 1024 * 1024,  # 10MB
+            'backupCount': 5,
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'apps': {
+            'handlers': ['console', 'file'] if not DEBUG else ['console'],
+            'level': 'DEBUG' if DEBUG else 'INFO',
+            'propagate': False,
+        },
+    },
+}

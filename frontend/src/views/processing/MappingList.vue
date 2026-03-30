@@ -1,7 +1,7 @@
 <template>
   <div class="mapping-list">
     <div class="header-actions">
-      <h2>数据映射配置</h2>
+      <h2 class="page-title">数据映射配置</h2>
       <a-button type="primary" @click="$router.push('/processing/mappings/create')">
         <template #icon><PlusOutlined /></template>
         新建配置
@@ -148,11 +148,9 @@ async function fetchMappings() {
       search: searchForm.name,
       status: searchForm.status
     })
-    console.log('API Response:', res)
-    console.log('API Data:', res.data)
-    mappings.value = res.data.results
-    pagination.total = res.data.count
-    console.log('Mappings:', mappings.value)
+    const data = res.data?.data || res.data
+    mappings.value = data.results || []
+    pagination.total = data.pagination?.total || data.count || 0
   } catch (error) {
     console.error(error)
   } finally {
@@ -266,11 +264,15 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
 
-.table-card {
-  border-radius: 8px;
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Fira Code', monospace;
+  color: var(--color-text);
 }
 
 .search-form {

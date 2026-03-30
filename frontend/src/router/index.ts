@@ -106,21 +106,37 @@ const router = createRouter({
     routes
 })
 
-// 路由守卫 - 认证检查
-router.beforeEach((to, _from, next) => {
+// 路由守卫 - 认证检查 + 角色权限
+router.beforeEach(async (to, _from, next) => {
     // 设置页面标题
     document.title = `${to.meta.title || '数据处理系统'} - DPS`
 
-    // 使用 sessionStorage 支持多标签页独立登录
     const token = sessionStorage.getItem('access_token')
     const requiresAuth = to.meta.requiresAuth !== false
 
     if (requiresAuth && !token) {
-        // 需要认证但未登录，跳转登录页
         next({ name: 'Login', query: { redirect: to.fullPath } })
     } else if (to.name === 'Login' && token) {
-        // 已登录但访问登录页，跳转首页
         next({ name: 'Dashboard' })
+    } else if (to.meta.roles) {
+        // 角色权限检查
+        const { useUserStore } = await import('@/stores/user')
+        const userStore = useUserStore()
+        
+        // 确保用户信息已加载
+        if (!userStore.userInfo && token) {
+            await userStore.fetchUserInfo()
+        }
+        
+        const allowedRoles = to.meta.roles as string[]
+        const userRole = userStore.userInfo?.role || ''
+        
+        // super_admin 拥有所有权限，admin 匹配 'admin' 角色
+        if (userRole === 'super_admin' || allowedRoles.includes(userRole)) {
+            next()
+        } else {
+            next({ name: 'Dashboard' })
+        }
     } else {
         next()
     }

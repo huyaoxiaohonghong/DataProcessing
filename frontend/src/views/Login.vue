@@ -1,10 +1,15 @@
 <template>
   <div class="login-container">
-    <div class="login-bg"></div>
+    <!-- Ambient glow orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
     <div class="login-card">
       <div class="login-header">
+        <div class="logo-icon">D</div>
         <h1>数据处理管理系统</h1>
-        <p>Software Management System</p>
+        <p>Data Processing System</p>
       </div>
       
       <a-form
@@ -21,9 +26,7 @@
             placeholder="请输入用户名"
             size="large"
           >
-            <template #prefix>
-              <UserOutlined />
-            </template>
+            <template #prefix><UserOutlined /></template>
           </a-input>
         </a-form-item>
 
@@ -33,9 +36,7 @@
             placeholder="请输入密码"
             size="large"
           >
-            <template #prefix>
-              <LockOutlined />
-            </template>
+            <template #prefix><LockOutlined /></template>
           </a-input-password>
         </a-form-item>
 
@@ -44,13 +45,7 @@
         </a-form-item>
 
         <a-form-item>
-          <a-button
-            type="primary"
-            html-type="submit"
-            size="large"
-            block
-            :loading="loading"
-          >
+          <a-button type="primary" html-type="submit" size="large" block :loading="loading">
             登录
           </a-button>
         </a-form-item>
@@ -61,7 +56,6 @@
       </div>
     </div>
     
-    <!-- 滑动验证弹窗 -->
     <a-modal
       v-model:open="showVerifyModal"
       title="安全验证"
@@ -93,69 +87,41 @@ const userStore = useUserStore()
 const loading = ref(false)
 const rememberMe = ref(false)
 const showVerifyModal = ref(false)
-
-// 验证码数据
 const captchaKey = ref('')
 const xOffset = ref(0)
 
-const formState = reactive({
-  username: '',
-  password: '',
-})
-
+const formState = reactive({ username: '', password: '' })
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }],
 }
 
-// 点击登录按钮 - 显示验证弹窗
-async function handleLoginClick() {
-  showVerifyModal.value = true
-}
+function handleLoginClick() { showVerifyModal.value = true }
 
-// 验证成功回调
 function handleVerifySuccess(key: string, offset: number) {
   captchaKey.value = key
   xOffset.value = offset
   showVerifyModal.value = false
-  
-  // 执行登录
   performLogin()
 }
 
-// 验证失败回调
-function handleVerifyError() {
-  message.error('验证失败，请重试')
-}
+function handleVerifyError() { message.error('验证失败，请重试') }
 
-// 执行登录
 async function performLogin() {
   loading.value = true
-  
   try {
-    // 传递验证码数据
-    const loginData = {
-      ...formState,
-      captcha_key: captchaKey.value,
-      x_offset: xOffset.value
-    }
-    
-    const result = await userStore.loginAction(loginData)
-    
+    const result = await userStore.loginAction({
+      ...formState, captcha_key: captchaKey.value, x_offset: xOffset.value
+    } as any)
     if (result.success) {
       message.success(result.message)
-      // 跳转到原来想访问的页面或首页
-      const redirect = route.query.redirect as string || '/dashboard'
-      router.push(redirect)
+      router.push((route.query.redirect as string) || '/dashboard')
     } else {
       message.error(result.message)
-      // 登录失败，重置验证码
       captchaKey.value = ''
       xOffset.value = 0
     }
-  } finally {
-    loading.value = false
-  }
+  } finally { loading.value = false }
 }
 </script>
 
@@ -167,101 +133,127 @@ async function performLogin() {
   justify-content: center;
   position: relative;
   overflow: hidden;
+  background: #000;
 }
 
-.login-bg {
+.orb {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  filter: blur(120px);
+  pointer-events: none;
   z-index: 0;
 }
 
-.login-bg::before {
-  content: '';
-  position: absolute;
-  top: -50%;
-  left: -50%;
-  width: 200%;
-  height: 200%;
-  background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 50%);
-  animation: pulse 15s infinite;
+.orb-1 {
+  width: 500px; height: 500px;
+  top: -150px; right: -100px;
+  background: radial-gradient(circle, rgba(99,102,241,0.3), transparent 70%);
+  animation: float 20s ease-in-out infinite;
 }
 
-@keyframes pulse {
-  0%, 100% {
-    transform: translate(0, 0);
-  }
-  50% {
-    transform: translate(10%, 10%);
-  }
+.orb-2 {
+  width: 400px; height: 400px;
+  bottom: -100px; left: -80px;
+  background: radial-gradient(circle, rgba(139,92,246,0.25), transparent 70%);
+  animation: float 25s ease-in-out infinite reverse;
+}
+
+.orb-3 {
+  width: 300px; height: 300px;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(99,102,241,0.1), transparent 70%);
+  animation: pulse-glow 10s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translate(0, 0); }
+  50% { transform: translate(30px, -20px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
 }
 
 .login-card {
   position: relative;
   z-index: 1;
-  width: 400px;
-  padding: 40px;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(10px);
+  width: 420px;
+  padding: 48px 40px;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
 
 .login-header {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 36px;
+}
+
+.login-header .logo-icon {
+  width: 56px; height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #6366F1, #8B5CF6);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Fira Code', monospace;
+  font-weight: 700;
+  font-size: 24px;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
+  margin-bottom: 16px;
 }
 
 .login-header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 24px;
   font-weight: 700;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-family: 'Fira Code', monospace;
+  color: #F1F5F9;
 }
 
 .login-header p {
-  margin: 8px 0 0;
-  color: #999;
-  font-size: 14px;
-}
-
-.login-form {
-  margin-top: 24px;
+  margin: 6px 0 0;
+  color: #64748B;
+  font-size: 13px;
+  letter-spacing: 0.05em;
 }
 
 .login-form :deep(.ant-input-affix-wrapper) {
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  height: 48px;
+}
+
+.login-form :deep(.ant-input-affix-wrapper:focus),
+.login-form :deep(.ant-input-affix-wrapper-focused) {
+  border-color: #6366F1 !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15) !important;
 }
 
 .login-form :deep(.ant-btn-primary) {
-  height: 44px;
-  border-radius: 8px;
+  height: 48px;
+  border-radius: 10px;
   font-size: 16px;
-  font-weight: 500;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border: none;
-}
-
-.login-form :deep(.ant-btn-primary:hover) {
-  opacity: 0.9;
+  font-weight: 600;
 }
 
 .login-footer {
   text-align: center;
-  margin-top: 24px;
+  margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .login-footer p {
   margin: 0;
-  color: #999;
+  color: #475569;
   font-size: 12px;
 }
 </style>

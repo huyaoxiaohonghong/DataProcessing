@@ -1,65 +1,93 @@
 /**
  * Axios 实例配置
- * API client configuration with interceptors
- * 使用 sessionStorage 支持同一浏览器多标签页独立登录
+ * API client with token refresh queue to prevent race conditions
  */
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosResponse } from 'axios'
 import { config } from '@/config/env'
 
-// 创建 axios 实例
 const apiClient: AxiosInstance = axios.create({
   baseURL: config.apiBaseUrl ? `${config.apiBaseUrl}${config.apiPrefix}` : config.apiPrefix,
-  timeout: 30000,  // 增加超时时间支持大文件
+  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
 })
 
-// 请求拦截器 - 添加 Token
+// Token 刷新状态管理，防止并发请求重复刷新
+let isRefreshing = false
+let refreshSubscribers: ((token: string) => void)[] = []
+
+function onTokenRefreshed(token: string) {
+  refreshSubscribers.forEach(cb => cb(token))
+  refreshSubscribers = []
+}
+
+function addRefreshSubscriber(cb: (token: string) => void) {
+  refreshSubscribers.push(cb)
+}
+
+// 请求拦截器
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // 使用 sessionStorage，每个标签页独立
     const token = sessionStorage.getItem('access_token')
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
-// 响应拦截器 - 处理 Token 过期
+// 响应拦截器
 apiClient.interceptors.response.use(
-  (response: AxiosResponse) => {
-    return response
-  },
+  (response: AxiosResponse) => response,
   async (error) => {
     const originalRequest = error.config
 
-    // Token 过期，尝试刷新
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
       const refreshToken = sessionStorage.getItem('refresh_token')
-      if (refreshToken) {
-        try {
-          const response = await axios.post(
-            `${apiClient.defaults.baseURL}/users/token/refresh/`,
-            { refresh: refreshToken }
-          )
-          const { access } = response.data
-          sessionStorage.setItem('access_token', access)
-          originalRequest.headers.Authorization = `Bearer ${access}`
-          return apiClient(originalRequest)
-        } catch (refreshError) {
-          // 刷新失败，清除 token 并跳转登录
-          sessionStorage.removeItem('access_token')
-          sessionStorage.removeItem('refresh_token')
-          window.location.href = '/login'
-          return Promise.reject(refreshError)
-        }
+      if (!refreshToken) {
+        sessionStorage.removeItem('access_token')
+        sessionStorage.removeItem('refresh_token')
+        window.location.href = '/login'
+        return Promise.reject(error)
+      }
+
+      // 如果已经在刷新，排队等待
+      if (isRefreshing) {
+        return new Promise((resolve) => {
+          addRefreshSubscriber((newToken: string) => {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`
+            resolve(apiClient(originalRequest))
+          })
+        })
+      }
+
+      isRefreshing = true
+
+      try {
+        const response = await axios.post(
+          `${apiClient.defaults.baseURL}/users/token/refresh/`,
+          { refresh: refreshToken }
+        )
+        const { access } = response.data
+        sessionStorage.setItem('access_token', access)
+        originalRequest.headers.Authorization = `Bearer ${access}`
+
+        // 通知所有排队的请求
+        onTokenRefreshed(access)
+
+        return apiClient(originalRequest)
+      } catch (refreshError) {
+        sessionStorage.removeItem('access_token')
+        sessionStorage.removeItem('refresh_token')
+        refreshSubscribers = []
+        window.location.href = '/login'
+        return Promise.reject(refreshError)
+      } finally {
+        isRefreshing = false
       }
     }
 
@@ -68,4 +96,3 @@ apiClient.interceptors.response.use(
 )
 
 export default apiClient
-

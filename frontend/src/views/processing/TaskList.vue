@@ -1,10 +1,8 @@
 <template>
   <div class="task-list">
-    <a-page-header
-      class="page-header"
-      title="处理任务"
-      sub-title="管理数据处理任务"
-    />
+    <div class="header-actions">
+      <h2 class="page-title">处理任务</h2>
+    </div>
 
     <!-- 搜索区域 -->
     <a-card class="search-card" :bordered="false">
@@ -180,8 +178,9 @@ async function fetchTasks() {
       search: searchForm.name,
       status: searchForm.status
     })
-    tasks.value = res.data.results
-    pagination.total = res.data.count
+    const data = res.data?.data || res.data
+    tasks.value = data.results || []
+    pagination.total = data.pagination?.total || data.count || 0
   } catch (error) {
     console.error(error)
   } finally {
@@ -268,14 +267,19 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.task-list {
-  padding: 0;
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
 }
 
-.page-header {
-  background: #fff;
-  margin: -24px -24px 16px -24px;
-  padding: 0;
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  font-family: 'Fira Code', monospace;
+  color: var(--color-text);
 }
 
 .search-card {

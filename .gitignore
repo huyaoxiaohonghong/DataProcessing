@@ -47,6 +47,10 @@ uploads/
 .env
 .env.local
 .env.*.local
+backend/.env
+
+# Backend logs
+backend/logs/*.log
 
 # Node.js
 node_modules/
