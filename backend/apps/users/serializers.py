@@ -2,6 +2,8 @@
 用户序列化器
 Serializers for User model and authentication
 """
+import secrets
+
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
@@ -69,7 +71,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
         if password:
             user.set_password(password)
         else:
-            user.set_password('123456')  # 默认密码
+            user.set_password(secrets.token_urlsafe(12))
         user.save()
         return user
     

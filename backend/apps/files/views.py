@@ -28,12 +28,17 @@ logger = logging.getLogger('apps')
 
 class FileCategoryViewSet(viewsets.ModelViewSet):
     """文件分类 CRUD"""
-    queryset = FileCategory.objects.all()
     serializer_class = FileCategorySerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ['name', 'description']
     ordering_fields = ['name', 'created_at']
+    
+    def get_queryset(self):
+        return FileCategory.objects.annotate(
+            children_count=Count('children'),
+            files_count=Count('files', filter=Q(files__status='active'))
+        )
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)

@@ -21,6 +21,9 @@ class LoginLog(models.Model):
         verbose_name = '登录日志'
         verbose_name_plural = '登录日志'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['created_at', 'status']),
+        ]
 
     def __str__(self):
         return f"{self.username} - {self.created_at}"
@@ -44,6 +47,9 @@ class OperationLog(models.Model):
         verbose_name = '操作日志'
         verbose_name_plural = '操作日志'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['created_at', 'module']),
+        ]
 
     def __str__(self):
         return f"{self.user} - {self.action} - {self.created_at}"

@@ -48,11 +48,16 @@
             </a-tag>
           </template>
           <template v-else-if="column.key === 'progress'">
-            <a-progress 
-              :percent="record.progress" 
-              :status="getProgressStatus(record.status)"
-              size="small"
-            />
+            <div>
+              <a-progress 
+                :percent="record.progress" 
+                :status="getProgressStatus(record.status)"
+                size="small"
+              />
+              <span v-if="record.status === 'running' || record.total_rows > 0" class="progress-detail">
+                {{ record.processed_rows }} / {{ record.total_rows }} 行
+              </span>
+            </div>
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
@@ -107,7 +112,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { message } from 'ant-design-vue'
 import { 
   SearchOutlined, 
@@ -117,6 +122,7 @@ import {
 } from '@ant-design/icons-vue'
 import { 
   getTasks, 
+  getTask,
   executeTask, 
   cancelTask, 
   terminateTask,
@@ -127,7 +133,47 @@ import {
 
 const loading = ref(false)
 const tasks = ref<ProcessingTask[]>([])
+let pollingTimer: ReturnType<typeof setInterval> | null = null
+const POLLING_INTERVAL = 3000
 
+function hasActiveTasks(): boolean {
+  return tasks.value.some(t => t.status === 'running' || t.status === 'pending')
+}
+
+function startPolling() {
+  stopPolling()
+  if (!hasActiveTasks()) return
+  pollingTimer = setInterval(async () => {
+    const activeTasks = tasks.value.filter(t => t.status === 'running' || t.status === 'pending')
+    if (activeTasks.length === 0) {
+      stopPolling()
+      return
+    }
+    try {
+      const updates = await Promise.all(activeTasks.map(t => getTask(t.id)))
+      for (const res of updates) {
+        const updated = res.data?.data || res.data
+        const idx = tasks.value.findIndex(t => t.id === updated.id)
+        if (idx !== -1) {
+          tasks.value[idx] = updated
+        }
+      }
+      // If no more active tasks, stop polling
+      if (!hasActiveTasks()) {
+        stopPolling()
+      }
+    } catch {
+      // Silently ignore polling errors
+    }
+  }, POLLING_INTERVAL)
+}
+
+function stopPolling() {
+  if (pollingTimer) {
+    clearInterval(pollingTimer)
+    pollingTimer = null
+  }
+}
 const searchForm = reactive({
   name: '',
   status: ''
@@ -181,6 +227,10 @@ async function fetchTasks() {
     const data = res.data?.data || res.data
     tasks.value = data.results || []
     pagination.total = data.pagination?.total || data.count || 0
+    // Start polling if there are running/pending tasks
+    if (hasActiveTasks()) {
+      startPolling()
+    }
   } catch (error) {
     console.error(error)
   } finally {
@@ -210,7 +260,8 @@ async function handleExecute(record: ProcessingTask) {
   try {
     await executeTask(record.id)
     message.success('任务开始执行')
-    fetchTasks()
+    await fetchTasks()
+    startPolling()
   } catch (error) {
     message.error('执行失败')
   }
@@ -264,6 +315,10 @@ async function handleDelete(record: ProcessingTask) {
 onMounted(() => {
   fetchTasks()
 })
+
+onBeforeUnmount(() => {
+  stopPolling()
+})
 </script>
 
 <style scoped>
@@ -284,5 +339,12 @@ onMounted(() => {
 
 .search-card {
   margin-bottom: 16px;
+}
+
+.progress-detail {
+  display: block;
+  font-size: 12px;
+  color: #888;
+  margin-top: 2px;
 }
 </style>

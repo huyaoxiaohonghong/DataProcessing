@@ -50,19 +50,29 @@ class CacheService:
     @staticmethod
     def get(key: str):
         """获取缓存"""
-        return cache.get(key)
+        try:
+            return cache.get(key)
+        except Exception as e:
+            logger.error(f"Redis 读取失败，降级为无缓存: {e}")
+            return None
     
     @staticmethod
     def set(key: str, value, timeout: int = None):
         """设置缓存"""
         if timeout is None:
             timeout = CacheService.DEFAULT_TIMEOUT
-        cache.set(key, value, timeout)
+        try:
+            cache.set(key, value, timeout)
+        except Exception as e:
+            logger.error(f"Redis 写入失败，降级为无缓存: {e}")
     
     @staticmethod
     def delete(key: str):
         """删除缓存"""
-        cache.delete(key)
+        try:
+            cache.delete(key)
+        except Exception as e:
+            logger.error(f"Redis 删除失败，降级为无缓存: {e}")
     
     @staticmethod
     def delete_pattern(pattern: str):
@@ -109,7 +119,10 @@ class CacheService:
     @staticmethod
     def clear_all():
         """清除所有缓存"""
-        cache.clear()
+        try:
+            cache.clear()
+        except Exception as e:
+            logger.error(f"Redis 清除全部缓存失败，降级为无缓存: {e}")
     
     @staticmethod
     def generate_cache_key(prefix: str, params: dict = None) -> str:

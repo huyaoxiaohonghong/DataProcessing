@@ -107,6 +107,9 @@ class File(models.Model):
         verbose_name = '文件'
         verbose_name_plural = '文件'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'file_type']),
+        ]
 
     def __str__(self):
         return self.name

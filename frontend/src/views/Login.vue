@@ -87,8 +87,13 @@ const userStore = useUserStore()
 const loading = ref(false)
 const rememberMe = ref(false)
 const showVerifyModal = ref(false)
+
+// Enhanced captcha verification data
 const captchaKey = ref('')
 const xOffset = ref(0)
+const trajectory = ref('')
+const duration = ref(0)
+const captchaFingerprint = ref('')
 
 const formState = reactive({ username: '', password: '' })
 const rules = {
@@ -98,28 +103,47 @@ const rules = {
 
 function handleLoginClick() { showVerifyModal.value = true }
 
-function handleVerifySuccess(key: string, offset: number) {
-  captchaKey.value = key
-  xOffset.value = offset
+function handleVerifySuccess(data: { captchaKey: string; xOffset: number; trajectory: string; duration: number; fingerprint: string }) {
+  captchaKey.value = data.captchaKey
+  xOffset.value = data.xOffset
+  trajectory.value = data.trajectory
+  duration.value = data.duration
+  captchaFingerprint.value = data.fingerprint
   showVerifyModal.value = false
   performLogin()
 }
 
 function handleVerifyError() { message.error('验证失败，请重试') }
 
+function resetCaptchaData() {
+  captchaKey.value = ''
+  xOffset.value = 0
+  trajectory.value = ''
+  duration.value = 0
+  captchaFingerprint.value = ''
+}
+
 async function performLogin() {
   loading.value = true
   try {
     const result = await userStore.loginAction({
-      ...formState, captcha_key: captchaKey.value, x_offset: xOffset.value
-    } as any)
+      ...formState,
+      captcha_key: captchaKey.value,
+      x_offset: xOffset.value,
+      trajectory: trajectory.value,
+      duration: duration.value,
+      fingerprint: captchaFingerprint.value
+    })
     if (result.success) {
       message.success(result.message)
       router.push((route.query.redirect as string) || '/dashboard')
     } else {
-      message.error(result.message)
-      captchaKey.value = ''
-      xOffset.value = 0
+      if (result.status === 429) {
+        message.warning(result.message)
+      } else {
+        message.error(result.message)
+      }
+      resetCaptchaData()
     }
   } finally { loading.value = false }
 }

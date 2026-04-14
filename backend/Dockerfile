@@ -27,6 +27,12 @@ RUN mkdir -p logs
 # 收集静态文件
 RUN python manage.py collectstatic --noinput || true
 
+# 创建非 root 用户并设置目录权限
+RUN useradd -m appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
 EXPOSE 8000
 
 # 使用 gunicorn 启动（生产环境）

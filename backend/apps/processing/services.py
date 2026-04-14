@@ -5,18 +5,19 @@ Excel parsing and data processing service
 import io
 import logging
 import re
+import time
 from itertools import product
 
 from django.core.files.base import ContentFile
 from django.utils import timezone
 from openpyxl import load_workbook, Workbook
 from .models import DataMapping, ProcessingTask
+from utils.safe_eval import safe_eval_expr
 
 logger = logging.getLogger('apps')
 
 # 预编译正则
 _FIELD_PATTERN = re.compile(r'\{([^}]+)\}')
-_ALLOWED_EXPR_CHARS = frozenset('0123456789.+-*/() ')
 
 
 class ExcelService:
@@ -107,12 +108,18 @@ class DataProcessingService:
     @staticmethod
     def execute_task(task: ProcessingTask):
         """执行数据处理任务"""
+        task_start_time = time.monotonic()
         try:
             task.status = 'running'
             task.started_at = timezone.now()
             task.save(update_fields=['status', 'started_at'])
             
             mapping = task.mapping
+            
+            logger.info("任务开始执行", extra={
+                'task_id': task.id,
+                'mapping_id': mapping.id,
+            })
             
             # 读取源文件数据
             source_data = ExcelService.get_sheet_data(
@@ -137,6 +144,7 @@ class DataProcessingService:
             target_rows = []
             
             for row_idx, source_row in enumerate(source_data['rows']):
+                row_start_time = time.monotonic()
                 try:
                     result_rows = DataProcessingService._process_row(
                         source_row, source_data['headers'],
@@ -147,6 +155,14 @@ class DataProcessingService:
                 except Exception as e:
                     task.error_rows += 1
                     logger.debug(f"处理第{row_idx+1}行失败: {e}")
+                
+                row_duration_ms = (time.monotonic() - row_start_time) * 1000
+                logger.info("任务行处理", extra={
+                    'task_id': task.id,
+                    'mapping_id': mapping.id,
+                    'row_index': row_idx,
+                    'duration_ms': round(row_duration_ms, 2),
+                })
                 
                 task.processed_rows = row_idx + 1
                 if row_idx % DataProcessingService.PROGRESS_SAVE_INTERVAL == 0:
@@ -166,10 +182,24 @@ class DataProcessingService:
                 'status', 'completed_at', 'processed_rows',
                 'success_rows', 'error_rows', 'result_file'
             ])
+            
+            task_duration = time.monotonic() - task_start_time
+            logger.info("任务完成", extra={
+                'task_id': task.id,
+                'mapping_id': mapping.id,
+                'total_rows': task.total_rows,
+                'success_rows': task.success_rows,
+                'error_rows': task.error_rows,
+                'duration_seconds': round(task_duration, 3),
+            })
             return True
             
         except Exception as e:
-            logger.exception(f"任务执行失败: task_id={task.id}")
+            task_duration = time.monotonic() - task_start_time
+            logger.exception(f"任务执行失败: task_id={task.id}", extra={
+                'task_id': task.id,
+                'duration_seconds': round(task_duration, 3),
+            })
             task.status = 'failed'
             task.error_message = str(e)
             task.completed_at = timezone.now()
@@ -384,15 +414,12 @@ class DataProcessingService:
         
         result_expr = _FIELD_PATTERN.sub(replace_field, expression)
         
-        try:
-            if not all(c in _ALLOWED_EXPR_CHARS for c in result_expr):
-                return None
-            result = eval(result_expr)
-            if isinstance(result, float):
-                return int(result) if result == int(result) else round(result, 6)
-            return result
-        except Exception:
+        result = safe_eval_expr(result_expr)
+        if result is None:
             return None
+        if isinstance(result, float):
+            return int(result) if result == int(result) else round(result, 6)
+        return result
     
     @staticmethod
     def _create_result_file(headers, rows, name):

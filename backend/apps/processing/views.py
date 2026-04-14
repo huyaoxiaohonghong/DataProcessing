@@ -6,7 +6,6 @@ import logging
 
 from rest_framework import viewsets, permissions, status, filters
 from rest_framework.decorators import action
-from rest_framework.response import Response
 from django.http import FileResponse
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -18,7 +17,9 @@ from .serializers import (
     MappingFieldSerializer, ProcessingTaskSerializer, 
     ProcessingTaskCreateSerializer
 )
-from .services import ExcelService, DataProcessingService
+from .services import ExcelService
+from .tasks import execute_processing_task
+from config.celery import app as celery_app
 from apps.files.models import File
 from utils.response import ApiResponse
 
@@ -156,21 +157,16 @@ class ProcessingTaskViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def execute(self, request, pk=None):
-        """执行任务"""
+        """执行任务（异步提交到 Celery）"""
         task = self.get_object()
         
         if task.status not in ['pending', 'failed']:
             return ApiResponse.error('任务状态不允许执行')
         
-        # 同步执行（实际项目中应使用 Celery 异步执行）
-        success = DataProcessingService.execute_task(task)
-        
-        task.refresh_from_db()
-        serializer = self.get_serializer(task)
-        
-        if success:
-            return ApiResponse.success(serializer.data, '执行成功')
-        return ApiResponse.server_error(f'执行失败: {task.error_message}')
+        task.status = 'pending'
+        task.save(update_fields=['status'])
+        execute_processing_task.delay(task.id)
+        return ApiResponse.success({'task_id': task.id}, '任务已提交')
     
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
@@ -191,6 +187,10 @@ class ProcessingTaskViewSet(viewsets.ModelViewSet):
         
         if task.status != 'running':
             return ApiResponse.error('只能终止运行中的任务')
+        
+        # 通过 Celery revoke 终止异步任务
+        if task.celery_task_id:
+            celery_app.control.revoke(task.celery_task_id, terminate=True)
         
         task.status = 'cancelled'
         task.error_message = '任务被用户手动终止'

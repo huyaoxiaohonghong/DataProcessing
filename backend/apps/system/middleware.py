@@ -8,7 +8,10 @@ import logging
 
 from .models import OperationLog
 
-logger = logging.getLogger('apps')
+logger = logging.getLogger(__name__)
+
+# 慢查询告警阈值（毫秒）
+SLOW_QUERY_THRESHOLD_MS = 3000
 
 # 不记录日志的路径列表
 EXCLUDED_PATHS = frozenset([
@@ -39,15 +42,16 @@ class OperationLogMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
-        start_time = time.time()
+        start_time = time.monotonic()
         response = self.get_response(request)
+        response_time = int((time.monotonic() - start_time) * 1000)
 
+        # 记录写操作到数据库
         if (
             request.method in ('POST', 'PUT', 'PATCH', 'DELETE')
             and request.user.is_authenticated
             and not self._is_excluded(request.path)
         ):
-            duration = int((time.time() - start_time) * 1000)
             params = self._get_params(request) if not self._is_sensitive(request.path) else '[已脱敏]'
 
             try:
@@ -61,10 +65,19 @@ class OperationLogMiddleware:
                     ip=self._get_client_ip(request),
                     user_agent=request.META.get('HTTP_USER_AGENT', '')[:500],
                     response_code=response.status_code,
-                    response_time=duration,
+                    response_time=response_time,
                 )
             except Exception:
                 logger.exception("Failed to save operation log")
+
+        # GET 请求慢查询告警
+        if request.method == 'GET' and response_time > SLOW_QUERY_THRESHOLD_MS:
+            logger.warning("慢查询告警", extra={
+                'path': request.path,
+                'method': request.method,
+                'duration_ms': response_time,
+                'user_id': request.user.id if request.user.is_authenticated else None,
+            })
 
         return response
 

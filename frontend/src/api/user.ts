@@ -8,6 +8,11 @@ import type { ApiResponse } from './types'
 export interface LoginParams {
     username: string
     password: string
+    captcha_key: string
+    x_offset: number
+    trajectory: string      // Base64 encoded trajectory data
+    duration: number         // Total slide duration (ms)
+    fingerprint: string      // Client fingerprint hash
 }
 
 export interface RegisterParams {

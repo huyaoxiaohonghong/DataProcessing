@@ -4,8 +4,8 @@ Views for user authentication and management
 """
 from rest_framework import status, generics, permissions, viewsets, filters
 from rest_framework.views import APIView
-from rest_framework.response import Response
 from rest_framework.decorators import action
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate, get_user_model
 from django.db import models
@@ -19,6 +19,7 @@ from .serializers import (
     UserAdminSerializer
 )
 from apps.system.cache import CacheService
+from utils.response import ApiResponse
 
 User = get_user_model()
 
@@ -31,6 +32,8 @@ class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
     permission_classes = [permissions.AllowAny]
     serializer_class = UserCreateSerializer
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'register'
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -40,17 +43,13 @@ class RegisterView(generics.CreateAPIView):
         # 生成 JWT Token
         refresh = RefreshToken.for_user(user)
         
-        return Response({
-            'code': 200,
-            'message': '注册成功',
-            'data': {
-                'user': UserSerializer(user).data,
-                'tokens': {
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
-                }
+        return ApiResponse.created(data={
+            'user': UserSerializer(user).data,
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
             }
-        }, status=status.HTTP_201_CREATED)
+        }, message='注册成功')
 
 
 from django.contrib.auth.signals import user_logged_in, user_login_failed
@@ -64,27 +63,43 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
-        # 1. 验证滑动验证码
         from apps.system.services.captcha import CaptchaService
-        
+        from apps.system.rate_limiter import RateLimiter
+
+        ip = RateLimiter.get_client_ip(request)
+
+        # 1. IP 封锁检查
+        if RateLimiter.is_ip_blocked(ip):
+            return ApiResponse.error(message='您的 IP 已被临时封锁，请 30 分钟后再试', code=429, http_status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # 2. 登录频率限制检查：每分钟 5 次
+        if RateLimiter.is_rate_limited(f"rate:login:{ip}", 5, 60):
+            return ApiResponse.error(message='登录尝试过于频繁，请 1 分钟后再试', code=429, http_status=status.HTTP_429_TOO_MANY_REQUESTS)
+
+        # 3. 验证滑动验证码
         captcha_key = request.data.get('captcha_key')
         x_offset = request.data.get('x_offset')
         
         if not captcha_key or x_offset is None:
-            return Response({
-                'code': 400,
-                'message': '请完成滑动验证'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return ApiResponse.error(message='请完成滑动验证')
         
-        # 验证滑动位置
-        success, message = CaptchaService.verify_captcha(captcha_key, int(x_offset))
+        # 获取增强验证参数
+        trajectory = request.data.get('trajectory')
+        duration = request.data.get('duration')
+        fingerprint = request.data.get('fingerprint')
+
+        # 验证滑动位置（增强版：含 IP、指纹、轨迹、耗时）
+        success, message = CaptchaService.verify_captcha(
+            captcha_key, int(x_offset),
+            ip=ip,
+            fingerprint=fingerprint,
+            trajectory=trajectory,
+            duration=int(duration) if duration is not None else None,
+        )
         if not success:
-            return Response({
-                'code': 400,
-                'message': message
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return ApiResponse.error(message=message)
         
-        # 2. 验证用户名密码
+        # 4. 验证用户名密码
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         
@@ -95,28 +110,26 @@ class LoginView(APIView):
         )
         
         if user is None:
+            # 记录登录失败
+            RateLimiter.record_login_failure(ip)
             # 发送登录失败信号
             user_login_failed.send(
                 sender=__name__, 
                 credentials={'username': serializer.validated_data['username']}, 
                 request=request
             )
-            return Response({
-                'code': 401,
-                'message': '用户名或密码错误'
-            }, status=status.HTTP_401_UNAUTHORIZED)
+            return ApiResponse.unauthorized(message='用户名或密码错误')
         
         if not user.is_active:
+            # 记录登录失败
+            RateLimiter.record_login_failure(ip)
             # 发送登录失败信号
             user_login_failed.send(
                 sender=__name__, 
                 credentials={'username': serializer.validated_data['username']}, 
                 request=request
             )
-            return Response({
-                'code': 403,
-                'message': '账户已被禁用'
-            }, status=status.HTTP_403_FORBIDDEN)
+            return ApiResponse.forbidden(message='账户已被禁用')
         
         # 发送登录成功信号
         user_logged_in.send(sender=user.__class__, request=request, user=user)
@@ -126,17 +139,13 @@ class LoginView(APIView):
         # 生成 JWT Token
         refresh = RefreshToken.for_user(user)
         
-        return Response({
-            'code': 200,
-            'message': '登录成功',
-            'data': {
-                'user': UserSerializer(user).data,
-                'tokens': {
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
-                }
+        return ApiResponse.success(data={
+            'user': UserSerializer(user).data,
+            'tokens': {
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
             }
-        })
+        }, message='登录成功')
 
 
 class LogoutView(APIView):
@@ -152,15 +161,9 @@ class LogoutView(APIView):
             if refresh_token:
                 token = RefreshToken(refresh_token)
                 token.blacklist()
-            return Response({
-                'code': 200,
-                'message': '登出成功'
-            })
+            return ApiResponse.success(message='登出成功')
         except Exception:
-            return Response({
-                'code': 200,
-                'message': '登出成功'
-            })
+            return ApiResponse.success(message='登出成功')
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
@@ -177,11 +180,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         serializer = self.get_serializer(instance)
-        return Response({
-            'code': 200,
-            'message': '获取成功',
-            'data': serializer.data
-        })
+        return ApiResponse.success(data=serializer.data, message='获取成功')
     
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -189,11 +188,7 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
-        return Response({
-            'code': 200,
-            'message': '更新成功',
-            'data': serializer.data
-        })
+        return ApiResponse.success(data=serializer.data, message='更新成功')
 
 
 class ChangePasswordView(APIView):
@@ -209,18 +204,12 @@ class ChangePasswordView(APIView):
         
         user = request.user
         if not user.check_password(serializer.validated_data['old_password']):
-            return Response({
-                'code': 400,
-                'message': '原密码错误'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return ApiResponse.error(message='原密码错误')
         
         user.set_password(serializer.validated_data['new_password'])
         user.save()
         
-        return Response({
-            'code': 200,
-            'message': '密码修改成功'
-        })
+        return ApiResponse.success(message='密码修改成功')
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -270,11 +259,7 @@ class UserViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         
         serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'code': 200,
-            'message': '获取成功',
-            'data': serializer.data
-        })
+        return ApiResponse.success(data=serializer.data, message='获取成功')
     
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -282,11 +267,7 @@ class UserViewSet(viewsets.ModelViewSet):
         self.perform_create(serializer)
         # 清除用户缓存
         CacheService.clear_user_cache()
-        return Response({
-            'code': 200,
-            'message': '创建成功',
-            'data': serializer.data
-        }, status=status.HTTP_201_CREATED)
+        return ApiResponse.created(data=serializer.data, message='创建成功')
     
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
@@ -294,45 +275,29 @@ class UserViewSet(viewsets.ModelViewSet):
         
         # 管理员不能修改超级管理员或其他管理员
         if request.user.role == 'admin' and instance.role in ['super_admin', 'admin']:
-            return Response({
-                'code': 403,
-                'message': '您没有权限修改该用户'
-            }, status=status.HTTP_403_FORBIDDEN)
+            return ApiResponse.forbidden(message='您没有权限修改该用户')
         
         serializer = self.get_serializer(instance, data=request.data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
         # 清除用户缓存
         CacheService.clear_user_cache(instance.id)
-        return Response({
-            'code': 200,
-            'message': '更新成功',
-            'data': serializer.data
-        })
+        return ApiResponse.success(data=serializer.data, message='更新成功')
     
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         # 不能删除自己
         if instance.id == request.user.id:
-            return Response({
-                'code': 400,
-                'message': '不能删除当前登录用户'
-            }, status=status.HTTP_400_BAD_REQUEST)
+            return ApiResponse.error(message='不能删除当前登录用户')
         
         # 管理员不能删除超级管理员或其他管理员
         if request.user.role == 'admin' and instance.role in ['super_admin', 'admin']:
-            return Response({
-                'code': 403,
-                'message': '您没有权限删除该用户'
-            }, status=status.HTTP_403_FORBIDDEN)
+            return ApiResponse.forbidden(message='您没有权限删除该用户')
         
         self.perform_destroy(instance)
         # 清除用户缓存
         CacheService.clear_user_cache(instance.id)
-        return Response({
-            'code': 200,
-            'message': '删除成功'
-        })
+        return ApiResponse.success(message='删除成功')
     
     @action(detail=False, methods=['get'])
     def roles(self, request):
@@ -346,36 +311,5 @@ class UserViewSet(viewsets.ModelViewSet):
             roles = [{'value': 'user', 'label': '普通用户'}]
         else:
             roles = []
-        return Response({
-            'code': 200,
-            'message': '获取成功',
-            'data': roles
-        })
+        return ApiResponse.success(data=roles, message='获取成功')
 
-
-# 保留旧的 UserListView 以兼容
-class UserListView(generics.ListAPIView):
-    """
-    用户列表接口 (兼容旧接口)
-    GET /api/users/list/
-    """
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    filterset_fields = ['role', 'is_active', 'department']
-    search_fields = ['username', 'email', 'first_name', 'last_name']
-    
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
-        
-        serializer = self.get_serializer(queryset, many=True)
-        return Response({
-            'code': 200,
-            'message': '获取成功',
-            'data': serializer.data
-        })

@@ -8,8 +8,8 @@ from .models import File, FileCategory
 
 class FileCategorySerializer(serializers.ModelSerializer):
     """文件分类序列化器"""
-    children_count = serializers.SerializerMethodField()
-    files_count = serializers.SerializerMethodField()
+    children_count = serializers.IntegerField(read_only=True)
+    files_count = serializers.IntegerField(read_only=True)
     
     class Meta:
         model = FileCategory
@@ -19,12 +19,6 @@ class FileCategorySerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
-    
-    def get_children_count(self, obj):
-        return obj.children.count()
-    
-    def get_files_count(self, obj):
-        return obj.files.filter(status='active').count()
 
 
 class FileSerializer(serializers.ModelSerializer):
@@ -54,12 +48,25 @@ class FileSerializer(serializers.ModelSerializer):
 class FileUploadSerializer(serializers.ModelSerializer):
     """文件上传序列化器"""
     
+    ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
+    MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB
+    
     class Meta:
         model = File
         fields = ['name', 'description', 'file', 'category', 'department', 'tags', 'is_public']
         extra_kwargs = {
             'name': {'required': False}
         }
+    
+    def validate_file(self, value):
+        # 文件类型白名单校验
+        ext = value.name.rsplit('.', 1)[-1].lower() if '.' in value.name else ''
+        if ext not in self.ALLOWED_EXTENSIONS:
+            raise serializers.ValidationError(f'不支持的文件类型: {ext}')
+        # 文件大小限制
+        if value.size > self.MAX_FILE_SIZE:
+            raise serializers.ValidationError('文件大小不能超过 50MB')
+        return value
     
     def create(self, validated_data):
         # 自动填充文件信息

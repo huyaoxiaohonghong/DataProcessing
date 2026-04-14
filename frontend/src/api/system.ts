@@ -47,8 +47,10 @@ export interface CaptchaData {
     y: number          // 拼图 Y 坐标
 }
 
-export const getCaptcha = () => {
-    return apiClient.get<{ code: number; message: string; data: CaptchaData }>('/system/captcha/')
+export const getCaptcha = (fingerprint?: string) => {
+    return apiClient.get<{ code: number; message: string; data: CaptchaData }>('/system/captcha/', {
+        params: fingerprint ? { fingerprint } : undefined
+    })
 }
 
 // ============== 部门管理 ==============

@@ -71,6 +71,9 @@ class DataMapping(models.Model):
         verbose_name = '数据映射配置'
         verbose_name_plural = '数据映射配置'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_by']),
+        ]
     
     def __str__(self):
         return self.name
@@ -194,6 +197,9 @@ class ProcessingTask(models.Model):
     # 错误信息
     error_message = models.TextField(blank=True, null=True, verbose_name='错误信息')
     
+    # Celery 任务 ID
+    celery_task_id = models.CharField(max_length=255, blank=True, default='', verbose_name='Celery任务ID')
+    
     # 创建信息
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -209,6 +215,10 @@ class ProcessingTask(models.Model):
         verbose_name = '处理任务'
         verbose_name_plural = '处理任务'
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', 'created_by']),
+            models.Index(fields=['created_at']),
+        ]
     
     def __str__(self):
         return f"{self.name} - {self.get_status_display()}"

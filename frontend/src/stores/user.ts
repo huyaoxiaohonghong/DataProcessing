@@ -1,18 +1,22 @@
 /**
  * 用户状态管理
  * Pinia store for user authentication state
- * 使用 sessionStorage 支持同一浏览器多标签页独立登录
+ * Token 存储在内存中（通过 tokenStore 模块），页面刷新后需重新登录
  */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login, logout, getProfile, type UserInfo, type LoginParams } from '@/api/user'
 import router from '@/router'
+import {
+    accessToken,
+    refreshToken,
+    setTokens as setTokensInternal,
+    clearTokens,
+} from './tokenStore'
 
 export const useUserStore = defineStore('user', () => {
-    // State - 使用 sessionStorage 支持多标签页独立登录
+    // State - Token 通过 tokenStore 模块存储在内存中
     const userInfo = ref<UserInfo | null>(null)
-    const accessToken = ref<string | null>(sessionStorage.getItem('access_token'))
-    const refreshToken = ref<string | null>(sessionStorage.getItem('refresh_token'))
 
     // Getters
     const isLoggedIn = computed(() => !!accessToken.value)
@@ -27,11 +31,8 @@ export const useUserStore = defineStore('user', () => {
             const response = await login(params)
             const { data } = response.data
 
-            // 保存 token 到 sessionStorage（每个标签页独立）
-            accessToken.value = data.tokens.access
-            refreshToken.value = data.tokens.refresh
-            sessionStorage.setItem('access_token', data.tokens.access)
-            sessionStorage.setItem('refresh_token', data.tokens.refresh)
+            // 保存 token 到内存
+            setTokensInternal(data.tokens.access, data.tokens.refresh)
 
             // 保存用户信息
             userInfo.value = data.user
@@ -40,7 +41,8 @@ export const useUserStore = defineStore('user', () => {
         } catch (error: any) {
             return {
                 success: false,
-                message: error.response?.data?.message || '登录失败'
+                message: error.response?.data?.message || '登录失败',
+                status: error.response?.status || 0
             }
         }
     }
@@ -53,12 +55,9 @@ export const useUserStore = defineStore('user', () => {
         } catch (error) {
             console.error('Logout error:', error)
         } finally {
-            // 清除状态
+            // 清除内存中的状态
             userInfo.value = null
-            accessToken.value = null
-            refreshToken.value = null
-            sessionStorage.removeItem('access_token')
-            sessionStorage.removeItem('refresh_token')
+            clearTokens()
 
             // 跳转登录页
             router.push('/login')
@@ -77,10 +76,7 @@ export const useUserStore = defineStore('user', () => {
     }
 
     function setTokens(access: string, refresh: string) {
-        accessToken.value = access
-        refreshToken.value = refresh
-        sessionStorage.setItem('access_token', access)
-        sessionStorage.setItem('refresh_token', refresh)
+        setTokensInternal(access, refresh)
     }
 
     // 初始化时尝试恢复用户信息
@@ -109,4 +105,3 @@ export const useUserStore = defineStore('user', () => {
         initializeAuth,
     }
 })
-

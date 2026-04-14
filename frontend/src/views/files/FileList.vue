@@ -175,7 +175,6 @@ import {
 } from '@ant-design/icons-vue'
 import { getFiles, uploadFile, deleteFile, downloadFile, type FileInfo } from '@/api/file'
 import apiClient from '@/api/client'
-import * as XLSX from 'xlsx'
 
 // 简单的文件图标组件
 const FileIcon = (props: { type: string }) => {
@@ -451,7 +450,8 @@ async function handlePreview(record: FileInfo) {
               })
             }
           } else {
-            // XLSX/XLS 使用 xlsx 库解析
+            // XLSX/XLS 使用 xlsx 库解析（动态导入，按需加载）
+            const XLSX = await import('xlsx')
             const workbook = XLSX.read(data, { type: 'array' })
             
             // 读取第一个工作表

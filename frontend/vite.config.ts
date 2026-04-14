@@ -31,12 +31,14 @@ export default defineConfig(({ mode }) => {
     build: {
       // 生产环境配置
       sourcemap: mode !== 'production',
+      chunkSizeWarningLimit: 500,
       rollupOptions: {
         output: {
           // 分包策略：将大型依赖拆分为独立 chunk
           manualChunks: {
             'ant-design-vue': ['ant-design-vue', '@ant-design/icons-vue'],
             'vue-vendor': ['vue', 'vue-router', 'pinia'],
+            'xlsx': ['xlsx'],
           },
         },
       },

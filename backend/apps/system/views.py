@@ -288,9 +288,22 @@ class CaptchaView(APIView):
     
     def get(self, request):
         """获取滑动验证码"""
+        from apps.system.rate_limiter import RateLimiter
+
+        ip = RateLimiter.get_client_ip(request)
+
+        # 频率限制检查：每分钟 10 次
+        if RateLimiter.is_rate_limited(f"rate:captcha:{ip}", 10, 60):
+            return Response(
+                {"code": 429, "message": "请求过于频繁，请稍后再试"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         try:
             from apps.system.services.captcha import CaptchaService
-            captcha_data = CaptchaService.generate_captcha()
+
+            fingerprint = request.query_params.get("fingerprint")
+            captcha_data = CaptchaService.generate_captcha(ip=ip, fingerprint=fingerprint)
             return ApiResponse.success(captcha_data)
         except Exception as e:
             return ApiResponse.server_error(f'生成验证码失败: {str(e)}')

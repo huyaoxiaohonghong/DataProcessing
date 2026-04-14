@@ -94,6 +94,12 @@ const routes: RouteRecordRaw[] = [
         ]
     },
     {
+        path: '/403',
+        name: 'Forbidden',
+        component: () => import('@/views/Forbidden.vue'),
+        meta: { requiresAuth: false, title: '403 权限不足' }
+    },
+    {
         path: '/:pathMatch(.*)*',
         name: 'NotFound',
         component: () => import('@/views/NotFound.vue'),
@@ -111,7 +117,8 @@ router.beforeEach(async (to, _from, next) => {
     // 设置页面标题
     document.title = `${to.meta.title || '数据处理系统'} - DPS`
 
-    const token = sessionStorage.getItem('access_token')
+    const { accessToken } = await import('@/stores/tokenStore')
+    const token = accessToken.value
     const requiresAuth = to.meta.requiresAuth !== false
 
     if (requiresAuth && !token) {
@@ -135,7 +142,7 @@ router.beforeEach(async (to, _from, next) => {
         if (userRole === 'super_admin' || allowedRoles.includes(userRole)) {
             next()
         } else {
-            next({ name: 'Dashboard' })
+            next({ name: 'Forbidden' })
         }
     } else {
         next()

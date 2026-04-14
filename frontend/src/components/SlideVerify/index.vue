@@ -31,7 +31,12 @@
       </div>
       
       <!-- 刷新按钮 -->
-      <div class="refresh-btn" @click="refreshCaptcha" title="刷新验证码">
+      <div
+        class="refresh-btn"
+        :class="{ disabled: refreshDisabled }"
+        @click="refreshCaptcha"
+        :title="refreshDisabled ? '请稍后再试' : '刷新验证码'"
+      >
         <span>⟳</span>
       </div>
     </div>
@@ -43,8 +48,9 @@ import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { getCaptcha, type CaptchaData } from '@/api/system'
 import { message } from 'ant-design-vue'
 
+// --- Task 6.3: Updated emit interface ---
 const emit = defineEmits<{
-  success: [captchaKey: string, xOffset: number]
+  success: [data: { captchaKey: string; xOffset: number; trajectory: string; duration: number; fingerprint: string }]
   error: []
 }>()
 
@@ -65,23 +71,66 @@ const sliderText = ref('向右滑动完成验证')
 
 // 鼠标/触摸起始位置
 let startX = 0
+let startY = 0
 const maxSliderWidth = 280 - 50 // 容器宽度 - 滑块宽度
+
+// --- Task 6.1: Client fingerprint ---
+const fingerprint = ref('')
+
+async function generateFingerprint(): Promise<string> {
+  const data = {
+    userAgent: navigator.userAgent,
+    screenResolution: `${screen.width}x${screen.height}`,
+    timezoneOffset: new Date().getTimezoneOffset()
+  }
+  const raw = JSON.stringify(data)
+  const encoder = new TextEncoder()
+  const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(raw))
+  const hashArray = Array.from(new Uint8Array(hashBuffer))
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+// --- Task 6.2: Trajectory tracking ---
+interface TrackPoint {
+  x: number
+  y: number
+  t: number
+}
+
+const trackPoints = ref<TrackPoint[]>([])
+let slideStartTime = 0
+let lastTrackTime = 0
+
+// --- Task 6.4: 429 handling ---
+const refreshDisabled = ref(false)
+let refreshTimer: ReturnType<typeof setTimeout> | null = null
 
 // 加载验证码
 const loadCaptcha = async () => {
   try {
-    const response = await getCaptcha()
+    // Task 6.1: pass fingerprint as query parameter
+    const response = await getCaptcha(fingerprint.value)
     if (response.data.code === 200) {
       Object.assign(captchaData, response.data.data)
       resetSlider()
     }
-  } catch (error) {
-    message.error('获取验证码失败')
+  } catch (error: any) {
+    // Task 6.4: Handle 429 status code
+    if (error?.response?.status === 429) {
+      message.warning('请求过于频繁，请稍后再试')
+      refreshDisabled.value = true
+      refreshTimer = setTimeout(() => {
+        refreshDisabled.value = false
+      }, 60000)
+    } else {
+      message.error('获取验证码失败')
+    }
   }
 }
 
 // 刷新验证码
 const refreshCaptcha = () => {
+  if (refreshDisabled.value) return
   loadCaptcha()
 }
 
@@ -92,6 +141,9 @@ const resetSlider = () => {
   isSliding.value = false
   verifyStatus.value = null
   sliderText.value = '向右滑动完成验证'
+  trackPoints.value = []
+  slideStartTime = 0
+  lastTrackTime = 0
 }
 
 // 鼠标按下
@@ -99,7 +151,13 @@ const handleMouseDown = (e: MouseEvent) => {
   if (verifyStatus.value) return
   isSliding.value = true
   startX = e.clientX
-  
+  startY = e.clientY
+
+  // Task 6.2: Record start time and reset track
+  slideStartTime = Date.now()
+  lastTrackTime = 0
+  trackPoints.value = []
+
   document.addEventListener('mousemove', handleMouseMove)
   document.addEventListener('mouseup', handleMouseUp)
 }
@@ -109,7 +167,13 @@ const handleTouchStart = (e: TouchEvent) => {
   if (verifyStatus.value) return
   isSliding.value = true
   startX = e.touches[0]?.clientX || 0
-  
+  startY = e.touches[0]?.clientY || 0
+
+  // Task 6.2: Record start time and reset track
+  slideStartTime = Date.now()
+  lastTrackTime = 0
+  trackPoints.value = []
+
   document.addEventListener('touchmove', handleTouchMove)
   document.addEventListener('touchend', handleTouchEnd)
 }
@@ -117,17 +181,34 @@ const handleTouchStart = (e: TouchEvent) => {
 // 鼠标移动
 const handleMouseMove = (e: MouseEvent) => {
   if (!isSliding.value) return
-  
+
   const moveX = e.clientX - startX
   updatePosition(moveX)
+
+  // Task 6.2: Record track point with ≤50ms throttle
+  recordTrackPoint(e.clientX - startX, e.clientY - startY)
 }
 
 // 触摸移动
 const handleTouchMove = (e: TouchEvent) => {
   if (!isSliding.value) return
-  
-  const moveX = (e.touches[0]?.clientX || 0) - startX
+
+  const touch = e.touches[0]
+  const moveX = (touch?.clientX || 0) - startX
   updatePosition(moveX)
+
+  // Task 6.2: Record track point with ≤50ms throttle
+  recordTrackPoint((touch?.clientX || 0) - startX, (touch?.clientY || 0) - startY)
+}
+
+// Task 6.2: Record a track point with ≤50ms interval throttle
+function recordTrackPoint(x: number, y: number) {
+  const now = Date.now()
+  const t = now - slideStartTime
+  if (t - lastTrackTime >= 50 || trackPoints.value.length === 0) {
+    trackPoints.value.push({ x: Math.round(x), y: Math.round(y), t })
+    lastTrackTime = t
+  }
 }
 
 // 更新位置
@@ -142,7 +223,7 @@ const updatePosition = (moveX: number) => {
 const handleMouseUp = () => {
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
-  
+
   verifySlider()
 }
 
@@ -150,46 +231,55 @@ const handleMouseUp = () => {
 const handleTouchEnd = () => {
   document.removeEventListener('touchmove', handleTouchMove)
   document.removeEventListener('touchend', handleTouchEnd)
-  
+
   verifySlider()
 }
 
 // 验证滑块位置
 const verifySlider = () => {
   if (!isSliding.value) return
-  
+
   isSliding.value = false
-  
-  // 这里不调用后端验证，而是将数据传给父组件
-  // 父组件会在登录时一并验证
+
   const xOffset = Math.round(puzzleLeft.value)
-  
-  // 简单的前端视觉反馈（实际验证由后端完成）
-  if (xOffset > 30) {
-    verifyStatus.value = 'success'
-    setTimeout(() => {
-      emit('success', captchaData.captcha_key, xOffset)
-    }, 300)
-  } else {
-    verifyStatus.value = 'error'
-    setTimeout(() => {
-      resetSlider()
-      emit('error')
-    }, 1000)
-  }
+
+  // Task 6.2: Calculate total slide duration
+  const duration = Date.now() - slideStartTime
+
+  // Task 6.3: Base64 encode trajectory data
+  const trajectory = btoa(JSON.stringify(trackPoints.value))
+
+  // Task 6.3: Always emit success — no client-side xOffset > 30 filtering
+  // All validation is delegated to the backend
+  verifyStatus.value = 'success'
+  setTimeout(() => {
+    emit('success', {
+      captchaKey: captchaData.captcha_key,
+      xOffset,
+      trajectory,
+      duration,
+      fingerprint: fingerprint.value
+    })
+  }, 300)
 }
 
-// 组件挂载时加载验证码
-onMounted(() => {
+// 组件挂载时加载验证码和生成指纹
+onMounted(async () => {
+  // Task 6.1: Generate fingerprint on mount
+  fingerprint.value = await generateFingerprint()
   loadCaptcha()
 })
 
-// 组件卸载时清理事件监听
+// 组件卸载时清理事件监听和定时器
 onUnmounted(() => {
   document.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('mouseup', handleMouseUp)
   document.removeEventListener('touchmove', handleTouchMove)
   document.removeEventListener('touchend', handleTouchEnd)
+  if (refreshTimer) {
+    clearTimeout(refreshTimer)
+    refreshTimer = null
+  }
 })
 </script>
 
@@ -337,6 +427,12 @@ onUnmounted(() => {
   background: #fff;
   transform: rotate(180deg);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.refresh-btn.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
 }
 
 .refresh-btn span {

@@ -1,9 +1,12 @@
 /**
  * Axios 实例配置
  * API client with token refresh queue to prevent race conditions
+ * Token 从 tokenStore 内存模块读取，不再使用 sessionStorage
  */
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig, type AxiosResponse } from 'axios'
+import { message } from 'ant-design-vue'
 import { config } from '@/config/env'
+import { accessToken, refreshToken, setTokens, clearTokens } from '@/stores/tokenStore'
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: config.apiBaseUrl ? `${config.apiBaseUrl}${config.apiPrefix}` : config.apiPrefix,
@@ -29,7 +32,7 @@ function addRefreshSubscriber(cb: (token: string) => void) {
 // 请求拦截器
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = sessionStorage.getItem('access_token')
+    const token = accessToken.value
     if (token && config.headers) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -42,15 +45,32 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response: AxiosResponse) => response,
   async (error) => {
+    // 网络超时或无响应
+    if (error.code === 'ECONNABORTED' || !error.response) {
+      message.error('网络连接超时，请检查网络后重试')
+      return Promise.reject(error)
+    }
+
+    const status = error.response?.status
+
+    // 错误分类提示
+    switch (status) {
+      case 403:
+        message.error('权限不足，请联系管理员')
+        break
+      case 500:
+        message.error('服务器异常，请稍后重试')
+        break
+    }
+
     const originalRequest = error.config
 
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true
 
-      const refreshToken = sessionStorage.getItem('refresh_token')
-      if (!refreshToken) {
-        sessionStorage.removeItem('access_token')
-        sessionStorage.removeItem('refresh_token')
+      const refreshTokenValue = refreshToken.value
+      if (!refreshTokenValue) {
+        clearTokens()
         window.location.href = '/login'
         return Promise.reject(error)
       }
@@ -70,10 +90,10 @@ apiClient.interceptors.response.use(
       try {
         const response = await axios.post(
           `${apiClient.defaults.baseURL}/users/token/refresh/`,
-          { refresh: refreshToken }
+          { refresh: refreshTokenValue }
         )
         const { access } = response.data
-        sessionStorage.setItem('access_token', access)
+        setTokens(access, refreshTokenValue)
         originalRequest.headers.Authorization = `Bearer ${access}`
 
         // 通知所有排队的请求
@@ -81,8 +101,7 @@ apiClient.interceptors.response.use(
 
         return apiClient(originalRequest)
       } catch (refreshError) {
-        sessionStorage.removeItem('access_token')
-        sessionStorage.removeItem('refresh_token')
+        clearTokens()
         refreshSubscribers = []
         window.location.href = '/login'
         return Promise.reject(refreshError)
