@@ -1,0 +1,20 @@
+# 保证 Shell 脚本和关键部署配置在 Linux 下始终是 LF
+*.sh            text eol=lf
+*.bash          text eol=lf
+Dockerfile      text eol=lf
+docker-compose.yml text eol=lf
+*.conf          text eol=lf
+
+# Python / 常规文本
+*.py            text
+*.md            text
+*.yml           text
+*.yaml          text
+*.json          text
+*.ini           text
+
+# 二进制
+*.png           binary
+*.jpg           binary
+*.ico           binary
+*.xlsx          binary

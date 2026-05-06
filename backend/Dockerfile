@@ -6,11 +6,10 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# 安装系统依赖 (MySQL client)
+# 安装系统依赖 (PostgreSQL client)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        pkg-config \
-        default-libmysqlclient-dev \
+        libpq-dev \
         build-essential && \
     rm -rf /var/lib/apt/lists/*
 

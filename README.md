@@ -6,7 +6,7 @@
 
 ### 后端
 - **Framework**: Django 6.0 + Django REST Framework
-- **Database**: MySQL 8.0
+- **Database**: PostgreSQL 16
 - **Cache**: Redis 7
 - **Authentication**: JWT (Simple JWT)
 
@@ -54,23 +54,35 @@
 
 ### 方式一：Docker 部署（推荐）
 
-```bash
-# 1. 复制环境变量文件
-cp backend/.env.example backend/.env
-# 修改 .env 中的配置（数据库密码、SECRET_KEY 等）
+一键脚本（适用于 Ubuntu/Debian/CentOS 等 Linux 云服务器）：
 
-# 2. 一键启动所有服务
-docker-compose up -d
+```bash
+sudo bash deploy.sh
+```
+
+脚本会自动安装 Docker、生成 `.env`（随机密钥和密码）、启动所有服务、执行数据库迁移。
+
+手动方式：
+
+```bash
+# 1. 复制环境变量文件并按需修改
+cp .env.example .env
+
+# 2. 启动所有服务
+docker compose up -d
 
 # 3. 初始化数据库
-docker-compose exec backend python manage.py migrate
+docker compose exec backend python manage.py migrate
 
-# 4. 访问
+# 4. 创建超级用户
+docker compose exec backend python manage.py createsuperuser
+
+# 5. 访问
 # 前端: http://localhost
 # 后端 API: http://localhost:8000/api/
 ```
 
-### 方式二：本地开发
+### 方式二：本地开发（不走 Docker）
 
 #### 后端
 
@@ -85,15 +97,20 @@ source venv/bin/activate  # Linux/Mac
 # 安装依赖
 pip install -r requirements.txt
 
-# 配置环境变量
-cp .env.example .env
-# 编辑 .env 文件，填入数据库密码等配置
+# 创建本地环境变量文件 backend/.env（见下方"环境变量"小节）
 
 # 数据库迁移
 python manage.py migrate
 
-# 启动服务
+# 启动服务（另开终端跑 Celery）
 python manage.py runserver 8000
+celery -A config worker --loglevel=info
+```
+
+本地需要先跑起 PostgreSQL 和 Redis，可以用：
+
+```bash
+docker compose up -d db redis
 ```
 
 #### 前端
@@ -110,23 +127,26 @@ npm run dev
 
 ## 环境变量
 
-复制 `backend/.env.example` 为 `backend/.env` 并配置以下变量：
+- **Docker 部署**：根目录 `.env`（可参考 `.env.example`），由 `docker-compose.yml` 读取。
+- **本地开发**：`backend/.env`，由 Django 直接加载。模板如下：
 
 ```env
 # Django
-DJANGO_SECRET_KEY=your-secret-key
+DJANGO_SECRET_KEY=change-me-to-a-random-secret-key
 DJANGO_DEBUG=True
 DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 
-# Database
-DB_HOST=localhost
-DB_PORT=3306
+# Database (PostgreSQL)
+DB_ENGINE=django.db.backends.postgresql
 DB_NAME=data_processing
-DB_USER=root
+DB_USER=postgres
 DB_PASSWORD=your_password
+DB_HOST=localhost
+DB_PORT=5432
 
 # Redis
 REDIS_URL=redis://localhost:6379/0
+REDIS_PASSWORD=
 
 # CORS
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173

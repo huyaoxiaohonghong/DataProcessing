@@ -54,7 +54,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'django_filters',
     'corsheaders',
-    'storages',
     # Local apps
     'apps.users',
     'apps.files',
@@ -100,20 +99,16 @@ WSGI_APPLICATION = 'config.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.mysql'),
+        'ENGINE': os.getenv('DB_ENGINE', 'django.db.backends.postgresql'),
         'NAME': os.getenv('DB_NAME', 'data_processing'),
-        'USER': os.getenv('DB_USER', 'root'),
+        'USER': os.getenv('DB_USER', 'postgres'),
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
         'HOST': os.getenv('DB_HOST', 'localhost'),
-        'PORT': os.getenv('DB_PORT', '3306'),
+        'PORT': os.getenv('DB_PORT', '5432'),
         'CONN_MAX_AGE': 600,  # 连接复用 10 分钟，减少连接开销
         'CONN_HEALTH_CHECKS': True,  # 启用连接健康检查
         'OPTIONS': {
-            'charset': 'utf8mb4',
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'connect_timeout': 10,  # 连接超时时间
-            'read_timeout': 30,  # 读取超时时间
-            'write_timeout': 30,  # 写入超时时间
         },
     }
 }
@@ -184,48 +179,10 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # ============================================================
-# 文件存储配置 — S3 对象存储 / 本地存储
+# 文件存储配置 — 本地文件存储
 # ============================================================
-USE_S3 = os.getenv('USE_S3', 'false').lower() in ('true', '1', 'yes')
-
-if USE_S3:
-    # S3 兼容对象存储 (缤纷云 Bitiful)
-    STORAGES = {
-        'default': {
-            'BACKEND': 'storages.backends.s3boto3.S3Boto3Storage',
-            'OPTIONS': {
-                'access_key': os.getenv('S3_ACCESS_KEY', ''),
-                'secret_key': os.getenv('S3_SECRET_KEY', ''),
-                'bucket_name': os.getenv('S3_BUCKET_NAME', ''),
-                'endpoint_url': os.getenv('S3_ENDPOINT_URL', 'https://s3.bitiful.net'),
-                'region_name': os.getenv('S3_REGION_NAME', 'cn-east-1'),
-                'custom_domain': os.getenv('S3_CUSTOM_DOMAIN', '') or None,
-                'file_overwrite': False,
-                'default_acl': 'private',
-                'querystring_auth': True,
-                'querystring_expire': 3600,  # 预签名 URL 有效期 1h
-                'object_parameters': {
-                    'CacheControl': 'max-age=86400',
-                },
-            },
-        },
-        'staticfiles': {
-            'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage',
-        },
-    }
-
-    # Media URL 配置
-    _s3_custom_domain = os.getenv('S3_CUSTOM_DOMAIN', '')
-    _s3_bucket = os.getenv('S3_BUCKET_NAME', '')
-    _s3_endpoint = os.getenv('S3_ENDPOINT_URL', 'https://s3.bitiful.net')
-    if _s3_custom_domain:
-        MEDIA_URL = f'https://{_s3_custom_domain}/'
-    else:
-        MEDIA_URL = f'{_s3_endpoint}/{_s3_bucket}/'
-else:
-    # 本地文件存储 (开发环境)
-    MEDIA_URL = '/media/'
-    MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR / 'media'
 
 # Custom User Model
 AUTH_USER_MODEL = 'users.User'

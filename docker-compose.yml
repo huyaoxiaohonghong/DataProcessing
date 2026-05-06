@@ -1,19 +1,18 @@
 version: '3.8'
 
 services:
-  # MySQL 数据库
+  # PostgreSQL 数据库
   db:
-    image: mysql:8.0
+    image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
-      MYSQL_DATABASE: ${DB_NAME:-data_processing}
-      MYSQL_CHARSET: utf8mb4
-      MYSQL_COLLATION: utf8mb4_unicode_ci
+      POSTGRES_DB: ${DB_NAME:-data_processing}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
-      - mysql_data:/var/lib/mysql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-data_processing}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -51,22 +50,14 @@ services:
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-change-me-in-production}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,dataprocessing.chengduxiaotiantian.cn}
-      - DB_ENGINE=django.db.backends.mysql
+      - DB_ENGINE=django.db.backends.postgresql
       - DB_NAME=${DB_NAME:-data_processing}
-      - DB_USER=${DB_USER:-root}
+      - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD}
       - DB_HOST=db
-      - DB_PORT=3306
+      - DB_PORT=5432
       - REDIS_URL=redis://redis:6379/0
       - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-https://dataprocessing.chengduxiaotiantian.cn}
-      # S3 对象存储
-      - USE_S3=${USE_S3:-true}
-      - S3_ACCESS_KEY=${S3_ACCESS_KEY}
-      - S3_SECRET_KEY=${S3_SECRET_KEY}
-      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
-      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-https://s3.bitiful.net}
-      - S3_REGION_NAME=${S3_REGION_NAME:-cn-east-1}
-      - S3_CUSTOM_DOMAIN=${S3_CUSTOM_DOMAIN:-}
     volumes:
       - backend_media:/app/media
       - backend_logs:/app/logs
@@ -81,6 +72,37 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+
+  # Celery Worker
+  celery:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    command: celery -A config worker --loglevel=info --concurrency=2
+    environment:
+      - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-change-me-in-production}
+      - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,dataprocessing.chengduxiaotiantian.cn}
+      - DB_ENGINE=django.db.backends.postgresql
+      - DB_NAME=${DB_NAME:-data_processing}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - backend_media:/app/media
+      - backend_logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -103,7 +125,7 @@ services:
           cpus: '0.5'
 
 volumes:
-  mysql_data:
+  postgres_data:
   redis_data:
   backend_media:
   backend_logs:
