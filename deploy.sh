@@ -108,28 +108,65 @@ install_docker() {
 }
 
 install_compose() {
-    # 优先使用 docker compose plugin
+    # 优先 V2 plugin（docker compose）。V1 (docker-compose 1.29) 对新版 Docker 已不兼容，强制升级。
     if docker compose version &>/dev/null; then
         COMPOSE_CMD="docker compose"
-        ok "Docker Compose (plugin) 已就绪"
+        ok "Docker Compose V2 (plugin) 已就绪：$(docker compose version --short 2>/dev/null || echo installed)"
         return
     fi
+
+    # 如果仅存在老版 V1 (docker-compose 1.x)，卸掉，避免 'ContainerConfig' KeyError
     if command -v docker-compose &>/dev/null; then
-        COMPOSE_CMD="docker-compose"
-        ok "docker-compose (legacy) 已就绪"
-        return
+        local v1_ver
+        v1_ver="$(docker-compose version --short 2>/dev/null || echo '')"
+        warn "检测到旧版 docker-compose $v1_ver（V1），与新版 Docker Engine 不兼容，将替换为 V2 plugin..."
+        case "$PKG_MGR" in
+            apt) apt-get remove -y docker-compose 2>/dev/null || true ;;
+            dnf|yum) $PKG_MGR remove -y docker-compose 2>/dev/null || true ;;
+        esac
     fi
-    log "安装 docker-compose-plugin..."
+
+    log "安装 docker-compose-plugin (V2)..."
     case "$PKG_MGR" in
-        apt) apt-get update && apt-get install -y docker-compose-plugin docker-compose 2>/dev/null || apt-get install -y docker-compose ;;
-        dnf|yum) $PKG_MGR install -y docker-compose-plugin docker-compose 2>/dev/null || $PKG_MGR install -y docker-compose ;;
+        apt)
+            apt-get update
+            apt-get install -y docker-compose-plugin
+            ;;
+        dnf|yum)
+            $PKG_MGR install -y docker-compose-plugin
+            ;;
     esac
+
+    # 如发行版仓库里没有 plugin，手动下载二进制
+    if ! docker compose version &>/dev/null; then
+        warn "docker-compose-plugin 未安装成功，手动下载二进制..."
+        local arch
+        arch="$(uname -m)"
+        case "$arch" in
+            x86_64) arch="x86_64" ;;
+            aarch64|arm64) arch="aarch64" ;;
+            *) err "不支持的架构: $arch"; exit 1 ;;
+        esac
+        local plugin_dir="/usr/libexec/docker/cli-plugins"
+        mkdir -p "$plugin_dir"
+        # 优先从国内镜像下载
+        local urls=(
+            "https://mirrors.aliyun.com/docker-toolbox/linux/compose/v2.29.7/docker-compose-linux-$arch"
+            "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-$arch"
+        )
+        for url in "${urls[@]}"; do
+            if curl -fsSL --connect-timeout 10 --max-time 120 "$url" -o "$plugin_dir/docker-compose"; then
+                chmod +x "$plugin_dir/docker-compose"
+                break
+            fi
+        done
+    fi
+
     if docker compose version &>/dev/null; then
         COMPOSE_CMD="docker compose"
-    elif command -v docker-compose &>/dev/null; then
-        COMPOSE_CMD="docker-compose"
+        ok "Docker Compose V2 安装完成"
     else
-        err "docker-compose 安装失败"
+        err "docker-compose V2 安装失败，请手动安装后重跑脚本"
         exit 1
     fi
 }
