@@ -54,6 +54,7 @@ services:
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-change-me-in-production}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,dataprocessing.chengduxiaotiantian.cn}
+      - USE_HTTPS=${USE_HTTPS:-False}
       - DB_ENGINE=django.db.backends.postgresql
       - DB_NAME=${DB_NAME:-data_processing}
       - DB_USER=${DB_USER:-postgres}
@@ -71,7 +72,7 @@ services:
       redis:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/users/')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -96,6 +97,7 @@ services:
       - DJANGO_SECRET_KEY=${DJANGO_SECRET_KEY:-change-me-in-production}
       - DJANGO_DEBUG=${DJANGO_DEBUG:-False}
       - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,dataprocessing.chengduxiaotiantian.cn}
+      - USE_HTTPS=${USE_HTTPS:-False}
       - DB_ENGINE=django.db.backends.postgresql
       - DB_NAME=${DB_NAME:-data_processing}
       - DB_USER=${DB_USER:-postgres}

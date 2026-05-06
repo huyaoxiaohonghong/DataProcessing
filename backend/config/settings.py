@@ -280,8 +280,12 @@ LOGGING = {
 
 # ============================================================
 # 生产环境 HTTPS 安全设置
+# 仅在 USE_HTTPS=true 时启用（避免没部署 SSL 的服务器被 301 到不存在的 HTTPS）
+# 如果前面有 SLB/Nginx 做 SSL 终止，请同时设置 SECURE_PROXY_SSL_HEADER
 # ============================================================
-if not DEBUG:
+USE_HTTPS = os.getenv('USE_HTTPS', 'False').lower() in ('true', '1', 'yes')
+
+if USE_HTTPS:
     SECURE_SSL_REDIRECT = True
     SECURE_HSTS_SECONDS = 31536000
     SESSION_COOKIE_SECURE = True
