@@ -43,6 +43,10 @@ services:
   backend:
     build:
       context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.org}
+        APT_MIRROR: ${APT_MIRROR:-}
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -82,6 +86,10 @@ services:
   celery:
     build:
       context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-pypi.org}
+        APT_MIRROR: ${APT_MIRROR:-}
     restart: unless-stopped
     command: celery -A config worker --loglevel=info --concurrency=2
     environment:
@@ -113,6 +121,9 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+        ALPINE_MIRROR: ${ALPINE_MIRROR:-}
     restart: unless-stopped
     ports:
       - "80:80"

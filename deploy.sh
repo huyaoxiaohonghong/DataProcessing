@@ -165,6 +165,45 @@ install_docker
 configure_docker_mirror
 install_compose
 
+# ---------- 国内镜像加速（pip / npm / apt / apk） ----------
+# 自动检测：阿里云 ECS 默认启用；可用 USE_CN_MIRROR=0 关闭，=1 强制启用
+detect_cn_mirror() {
+    if [[ "${USE_CN_MIRROR:-}" == "0" ]]; then
+        return 1
+    fi
+    if [[ "${USE_CN_MIRROR:-}" == "1" ]]; then
+        return 0
+    fi
+    # 自动判断：阿里云 ECS metadata 可达即视为国内
+    if curl -fsSL --connect-timeout 2 --max-time 3 http://100.100.100.200/latest/meta-data/ &>/dev/null; then
+        return 0
+    fi
+    # 或系统时区是 Asia/Shanghai
+    if [[ "$(cat /etc/timezone 2>/dev/null || timedatectl show -p Timezone --value 2>/dev/null)" == "Asia/Shanghai" ]]; then
+        return 0
+    fi
+    return 1
+}
+
+if detect_cn_mirror; then
+    ok "启用国内镜像加速（pip / npm / apt / apk）"
+    # 阿里云 ECS 内网可直连 mirrors.cloud.aliyuncs.com（更快、不走公网流量）
+    # 判断是否阿里云内网
+    if curl -fsSL --connect-timeout 2 --max-time 3 http://100.100.100.200/latest/meta-data/ &>/dev/null; then
+        ALI_HOST="mirrors.cloud.aliyuncs.com"
+        log "检测到阿里云 ECS，使用内网镜像：$ALI_HOST"
+    else
+        ALI_HOST="mirrors.aliyun.com"
+    fi
+    export PIP_INDEX_URL="https://${ALI_HOST}/pypi/simple/"
+    export PIP_TRUSTED_HOST="${ALI_HOST}"
+    export APT_MIRROR="http://${ALI_HOST}"
+    export NPM_REGISTRY="https://registry.npmmirror.com"
+    export ALPINE_MIRROR="https://${ALI_HOST}"
+else
+    log "未启用国内镜像，使用默认官方源（可用 USE_CN_MIRROR=1 强制启用）"
+fi
+
 # ---------- 生成 .env ----------
 ENV_FILE="$SCRIPT_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
@@ -229,7 +268,11 @@ open_firewall() {
 open_firewall
 
 # ---------- 构建 & 启动 ----------
-log "构建镜像（首次会比较慢）..."
+if [[ -n "${PIP_INDEX_URL:-}" ]]; then
+    log "构建镜像（使用国内镜像加速：pip=$PIP_INDEX_URL）..."
+else
+    log "构建镜像（首次会比较慢）..."
+fi
 $COMPOSE_CMD build
 
 log "启动服务（含 PostgreSQL / Redis / Django / Celery / Nginx）..."
