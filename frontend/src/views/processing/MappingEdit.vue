@@ -353,7 +353,8 @@ function filterOption(input: string, option: any) {
 async function loadFiles() {
   try {
     const res = await getFiles({ page_size: 1000 })
-    fileList.value = res.data.results || []
+    const data: any = (res.data as any)?.data || res.data
+    fileList.value = data.results || []
   } catch (error) {
     console.error('加载文件列表失败:', error)
   }

@@ -74,8 +74,9 @@ async function fetchLogs() {
       page_size: pagination.pageSize,
       search: searchText.value
     })
-    logList.value = res.data.results
-    pagination.total = res.data.count
+    const data: any = (res.data as any)?.data || res.data
+    logList.value = data.results || []
+    pagination.total = data.pagination?.total || data.count || 0
   } catch (error) {
     message.error('获取日志失败')
   } finally {

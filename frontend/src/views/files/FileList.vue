@@ -239,7 +239,7 @@ async function fetchFiles() {
       page_size: pagination.pageSize,
       search: searchText.value
     })
-    const data = res.data?.data || res.data
+    const data: any = (res.data as any)?.data || res.data
     fileList.value = data.results || []
     pagination.total = data.pagination?.total || data.count || 0
   } catch (error) {
