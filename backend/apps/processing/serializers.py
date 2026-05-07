@@ -98,7 +98,7 @@ class DataMappingCreateSerializer(serializers.ModelSerializer):
         # 批量创建字段映射
         if fields_data:
             field_objects = [
-                MappingField(mapping=mapping, sort_order=i, **fd)
+                MappingField(mapping=mapping, **{**fd, 'sort_order': i})
                 for i, fd in enumerate(fields_data)
             ]
             MappingField.objects.bulk_create(field_objects)
@@ -116,7 +116,7 @@ class DataMappingCreateSerializer(serializers.ModelSerializer):
             instance.fields.all().delete()
             if fields_data:
                 field_objects = [
-                    MappingField(mapping=instance, sort_order=i, **fd)
+                    MappingField(mapping=instance, **{**fd, 'sort_order': i})
                     for i, fd in enumerate(fields_data)
                 ]
                 MappingField.objects.bulk_create(field_objects)
