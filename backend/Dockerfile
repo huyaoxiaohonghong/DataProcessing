@@ -23,7 +23,8 @@ RUN if [ -n "$APT_MIRROR" ]; then \
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libpq-dev \
-        build-essential && \
+        build-essential \
+        gosu && \
     rm -rf /var/lib/apt/lists/*
 
 # 安装 Python 依赖（国内用阿里云 PyPI 镜像加速）
@@ -38,8 +39,10 @@ RUN pip install --no-cache-dir \
 # 复制项目代码
 COPY . .
 
-# 创建日志目录
-RUN mkdir -p logs
+# 创建日志和 media 目录
+# 注意：media 目录需要在 docker 命名卷首次挂载前就建好并 chown，
+# 新卷挂载时会从镜像继承目录所有权；已存在的卷需手工 chown 一次
+RUN mkdir -p logs media/uploads media/processing_results
 
 # 收集静态文件
 RUN python manage.py collectstatic --noinput || true
@@ -48,7 +51,12 @@ RUN python manage.py collectstatic --noinput || true
 RUN useradd -m appuser && \
     chown -R appuser:appuser /app
 
-USER appuser
+# 入口脚本: 以 root 修复 media / logs 卷权限后 gosu 切到 appuser
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# 注意：不要 USER appuser, 交给 entrypoint 用 gosu 切换
+ENTRYPOINT ["docker-entrypoint.sh"]
 
 EXPOSE 8000
 
