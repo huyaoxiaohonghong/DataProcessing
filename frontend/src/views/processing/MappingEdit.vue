@@ -660,20 +660,25 @@ async function loadMapping() {
 
   try {
     const res = await getMapping(mappingId.value)
-    const data = res.data.data
+    // 后端统一响应 { code, message, data }, 某些情况 data 可能缺失
+    const data: any = (res.data as any)?.data ?? res.data
+    if (!data || typeof data !== 'object') {
+      message.error('加载配置失败: 响应格式异常')
+      return
+    }
 
-    formData.name = data.name
-    formData.description = data.description || ''
-    formData.source_file = data.source_file
-    formData.source_sheet = data.source_sheet
-    formData.reference_file = data.reference_file
-    formData.reference_sheet = data.reference_sheet
-    formData.target_template = data.target_template
-    formData.target_sheet = data.target_sheet
-    formData.status = data.status
-    formData.fields = data.fields || []
+    formData.name = data.name ?? ''
+    formData.description = data.description ?? ''
+    formData.source_file = data.source_file ?? 0
+    formData.source_sheet = data.source_sheet ?? ''
+    formData.reference_file = data.reference_file ?? null
+    formData.reference_sheet = data.reference_sheet ?? ''
+    formData.target_template = data.target_template ?? 0
+    formData.target_sheet = data.target_sheet ?? ''
+    formData.status = data.status ?? 'draft'
+    formData.fields = Array.isArray(data.fields) ? data.fields : []
 
-    // 加载对应的工作表信息
+    // 加载对应的工作表信息（任一失败不应阻塞其他）
     if (formData.source_file) {
       sourceSheets.value = await parseFields(formData.source_file)
       const sheet = sourceSheets.value.find(s => s.sheet_name === formData.source_sheet)

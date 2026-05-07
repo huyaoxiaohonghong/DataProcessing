@@ -3,6 +3,7 @@
 Serializers for data processing
 """
 from rest_framework import serializers
+from django.db import transaction
 from .models import DataMapping, MappingField, ProcessingTask
 
 
@@ -92,35 +93,32 @@ class DataMappingCreateSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         if request and request.user:
             validated_data['created_by'] = request.user
-        
-        mapping = DataMapping.objects.create(**validated_data)
-        
-        # 批量创建字段映射
-        if fields_data:
-            field_objects = [
-                MappingField(mapping=mapping, **{**fd, 'sort_order': i})
-                for i, fd in enumerate(fields_data)
-            ]
-            MappingField.objects.bulk_create(field_objects)
-        
+
+        # 整段事务：字段批量创建失败时回滚主记录，避免产生空字段的孤儿配置
+        with transaction.atomic():
+            mapping = DataMapping.objects.create(**validated_data)
+            if fields_data:
+                MappingField.objects.bulk_create([
+                    MappingField(mapping=mapping, **{**fd, 'sort_order': i})
+                    for i, fd in enumerate(fields_data)
+                ])
         return mapping
-    
+
     def update(self, instance, validated_data):
         fields_data = validated_data.pop('fields', None)
-        
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        
-        if fields_data is not None:
-            instance.fields.all().delete()
-            if fields_data:
-                field_objects = [
-                    MappingField(mapping=instance, **{**fd, 'sort_order': i})
-                    for i, fd in enumerate(fields_data)
-                ]
-                MappingField.objects.bulk_create(field_objects)
-        
+
+        with transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+
+            if fields_data is not None:
+                instance.fields.all().delete()
+                if fields_data:
+                    MappingField.objects.bulk_create([
+                        MappingField(mapping=instance, **{**fd, 'sort_order': i})
+                        for i, fd in enumerate(fields_data)
+                    ])
         return instance
 
 
