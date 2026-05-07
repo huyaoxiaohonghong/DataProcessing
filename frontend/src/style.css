@@ -3,9 +3,21 @@
    Global Design System
    ============================================================ */
 
-@import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
+/*
+  字体策略:
+  - 放弃远程 Google Fonts @import (HTTP 部署 + CSP + 国内访问不稳定),
+    回退到系统等宽 / 无衬线字体栈, 保持整体风格一致.
+  - 如需恢复 Fira Code / Fira Sans, 可自行下载 woff2 放到 public/fonts
+    并用本地 @font-face 声明, 无需修改 CSP.
+*/
 
 :root {
+  --font-mono: 'Fira Code', 'JetBrains Mono', 'Cascadia Code', ui-monospace,
+    SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --font-sans: 'Fira Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'Helvetica Neue', Arial, 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', sans-serif;
+
   /* Colors - OLED Dark */
   --color-bg-base: #000000;
   --color-bg-elevated: #0A0A0F;

@@ -107,6 +107,26 @@ const puzzleStyle = computed(() => ({
 // ========================= Fingerprint =========================
 const fingerprint = ref('')
 
+// FNV-1a 32-bit 哈希: 当 crypto.subtle 不可用 (非 HTTPS 场景) 时的降级方案
+function fnv1a32(str: string): string {
+  let h = 0x811c9dc5
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return (h >>> 0).toString(16).padStart(8, '0')
+}
+
+async function sha256Hex(str: string): Promise<string> {
+  const subtle = globalThis.crypto?.subtle
+  if (!subtle) {
+    // 非 secure context (HTTP / IP 直连): 拼接多轮 FNV-1a 作为弱指纹
+    return fnv1a32(str) + fnv1a32(str + '|salt1') + fnv1a32(str + '|salt2') + fnv1a32(str + '|salt3')
+  }
+  const buf = await subtle.digest('SHA-256', new TextEncoder().encode(str))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 async function generateFingerprint(): Promise<string> {
   // 增强指纹：加入 language / platform / hardwareConcurrency / colorDepth / canvas 特征
   const canvasSig = (() => {
@@ -137,8 +157,12 @@ async function generateFingerprint(): Promise<string> {
     tz: new Date().getTimezoneOffset(),
     canvas: canvasSig,
   })
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw))
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+  try {
+    return await sha256Hex(raw)
+  } catch {
+    // 最终兜底：任何异常都不阻塞验证码加载
+    return fnv1a32(raw)
+  }
 }
 
 // ========================= Trajectory =========================
@@ -288,7 +312,11 @@ function resetSlider() {
 
 // ========================= Lifecycle =========================
 onMounted(async () => {
-  fingerprint.value = await generateFingerprint()
+  try {
+    fingerprint.value = await generateFingerprint()
+  } catch {
+    fingerprint.value = ''
+  }
   await loadCaptcha()
 })
 
