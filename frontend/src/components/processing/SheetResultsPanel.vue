@@ -132,7 +132,8 @@ function progressStatus(status: TaskSheetResult['status']): 'active' | 'exceptio
 <style scoped>
 .sheet-results-panel {
   padding: 8px 16px;
-  background: #fafafa;
+  background: var(--color-surface, rgba(255, 255, 255, 0.04));
   border-radius: 4px;
+  color: var(--color-text);
 }
 </style>

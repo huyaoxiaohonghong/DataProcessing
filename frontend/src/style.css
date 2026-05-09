@@ -449,6 +449,51 @@ body {
 }
 
 /* ============================================================
+   Drawer (规则配置抽屉、文件预览等)
+   默认白底会导致暗色主题下文字消失，覆盖为 OLED 暗色面板
+   ============================================================ */
+.ant-drawer-content {
+  background: var(--color-bg-elevated, #0A0A0F) !important;
+  color: var(--color-text) !important;
+}
+
+.ant-drawer-header {
+  background: transparent !important;
+  border-bottom: 1px solid var(--color-border) !important;
+}
+
+.ant-drawer-title {
+  color: var(--color-text) !important;
+  font-family: 'Fira Code', monospace;
+}
+
+.ant-drawer-close {
+  color: var(--color-text-muted) !important;
+}
+
+.ant-drawer-body {
+  background: transparent !important;
+  color: var(--color-text) !important;
+}
+
+.ant-drawer-footer {
+  background: transparent !important;
+  border-top: 1px solid var(--color-border) !important;
+}
+
+/* Drawer 里的卡片 (比如对照表配置子卡) */
+.ant-drawer .ant-card {
+  background: var(--color-surface, rgba(255, 255, 255, 0.04)) !important;
+  border-color: var(--color-border) !important;
+}
+
+.ant-drawer .ant-card-head,
+.ant-drawer .ant-card-head-title {
+  color: var(--color-text) !important;
+  background: transparent !important;
+}
+
+/* ============================================================
    Route Transitions
    ============================================================ */
 .fade-enter-active,

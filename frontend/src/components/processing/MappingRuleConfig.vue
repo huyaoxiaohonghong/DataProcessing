@@ -268,13 +268,14 @@ watch(
 <style scoped>
 .mapping-rule-config {
   padding: 16px;
-  background: #fff;
+  background: transparent;
   border-radius: 4px;
+  color: var(--color-text);
 }
 
 .lookup-card {
   margin-top: 16px;
-  background: #fafafa;
+  background: var(--color-surface, rgba(255, 255, 255, 0.04));
 }
 
 .field-tags {
@@ -286,7 +287,7 @@ watch(
 }
 
 .tag-label {
-  color: #666;
+  color: var(--color-text-muted, #94A3B8);
   font-size: 12px;
 }
 
