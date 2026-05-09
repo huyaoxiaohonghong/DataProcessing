@@ -708,10 +708,25 @@ class DataProcessingService:
 
     @staticmethod
     def _evaluate_expression(expression, source_dict, upstream_sheet_outputs=None):
-        """计算表达式，支持 {字段名} 和 {sheet.字段} 引用"""
+        """计算表达式，支持 {字段名} 和 {sheet.字段} 引用。
+
+        Req 7.6 不变式：任何异常都必须被捕获并返回 None（不抛给上层 _process_row）。
+        这里加一层顶层 try/except 作为最终兜底，即使内部 replace_field / safe_eval_expr
+        在未来演进中意外抛错也能维持契约。
+        """
         if not expression:
             return None
+        try:
+            return DataProcessingService._evaluate_expression_impl(
+                expression, source_dict, upstream_sheet_outputs,
+            )
+        except Exception as e:  # Req 7.6
+            logger.debug(f'表达式求值失败: {expression!r} -> {e}')
+            return None
 
+    @staticmethod
+    def _evaluate_expression_impl(expression, source_dict, upstream_sheet_outputs=None):
+        """实际求值逻辑，假设调用方已用 _evaluate_expression 包了一层 try/except。"""
         # 构建 sheet_name -> col_index 和 rows 的索引（用于 {sheet.field}）
         upstream_by_name = {}
         if upstream_sheet_outputs:
