@@ -127,13 +127,20 @@ install_compose() {
     fi
 
     log "安装 docker-compose-plugin (V2)..."
+    # apt 源里可能没有该包（如 Ubuntu 官方源只有 docker-compose-v2，
+    # 需要 Docker 官方 repo 才有 docker-compose-plugin），失败时降级为手动下载
     case "$PKG_MGR" in
         apt)
-            apt-get update
-            apt-get install -y docker-compose-plugin
+            apt-get update || true
+            if ! apt-get install -y docker-compose-plugin 2>/dev/null; then
+                # 尝试 Ubuntu 官方源里的别名
+                apt-get install -y docker-compose-v2 2>/dev/null || \
+                    warn "apt 仓库未找到 docker-compose-plugin / docker-compose-v2，稍后手动下载"
+            fi
             ;;
         dnf|yum)
-            $PKG_MGR install -y docker-compose-plugin
+            $PKG_MGR install -y docker-compose-plugin 2>/dev/null || \
+                warn "$PKG_MGR 仓库未找到 docker-compose-plugin，稍后手动下载"
             ;;
     esac
 
