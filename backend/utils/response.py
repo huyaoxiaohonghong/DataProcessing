@@ -10,20 +10,34 @@ class ApiResponse:
     """统一 API 响应格式"""
 
     @staticmethod
-    def success(data=None, message='操作成功', code=200, http_status=status.HTTP_200_OK):
-        """成功响应"""
+    def success(data=None, message='操作成功', code=200, http_status=status.HTTP_200_OK, warnings=None):
+        """成功响应
+
+        Parameters
+        ----------
+        warnings : list | None
+            Non-fatal warnings (e.g. ignored lineage entries from
+            ``_rebuild_children``). When provided and non-empty, the list
+            is attached as ``warnings`` at the top level of the response
+            body so callers can inspect them without parsing ``data``.
+        """
         response = {
             'code': code,
             'message': message,
         }
         if data is not None:
             response['data'] = data
+        if warnings:
+            response['warnings'] = warnings
         return Response(response, status=http_status)
 
     @staticmethod
-    def created(data=None, message='创建成功'):
+    def created(data=None, message='创建成功', warnings=None):
         """创建成功响应"""
-        return ApiResponse.success(data=data, message=message, http_status=status.HTTP_201_CREATED)
+        return ApiResponse.success(
+            data=data, message=message,
+            http_status=status.HTTP_201_CREATED, warnings=warnings,
+        )
 
     @staticmethod
     def error(message='操作失败', code=400, http_status=status.HTTP_400_BAD_REQUEST, errors=None):

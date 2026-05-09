@@ -107,9 +107,12 @@ DATABASES = {
         'PORT': os.getenv('DB_PORT', '5432'),
         'CONN_MAX_AGE': 600,  # 连接复用 10 分钟，减少连接开销
         'CONN_HEALTH_CHECKS': True,  # 启用连接健康检查
-        'OPTIONS': {
-            'connect_timeout': 10,  # 连接超时时间
-        },
+        'OPTIONS': (
+            {'connect_timeout': 10}
+            if os.getenv('DB_ENGINE', 'django.db.backends.postgresql')
+               == 'django.db.backends.postgresql'
+            else {}
+        ),
     }
 }
 

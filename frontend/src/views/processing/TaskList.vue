@@ -38,9 +38,18 @@
         :data-source="tasks"
         :loading="loading"
         :pagination="pagination"
+        :expanded-row-keys="expandedRowKeys"
         @change="handleTableChange"
+        @expand="handleExpandRow"
         row-key="id"
       >
+        <template #expandedRowRender="{ record }">
+          <SheetResultsPanel
+            :task-id="record.id"
+            :task-status="record.status"
+            :refresh-key="sheetResultRefreshKey[record.id] || 0"
+          />
+        </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'status'">
             <a-tag :color="getStatusColor(record.status)">
@@ -130,9 +139,27 @@ import {
   downloadTaskResult,
   type ProcessingTask 
 } from '@/api/processing'
+import SheetResultsPanel from '@/components/processing/SheetResultsPanel.vue'
 
 const loading = ref(false)
 const tasks = ref<ProcessingTask[]>([])
+
+// Req 16.1–16.4: track expanded rows + refresh key per task for polling
+const expandedRowKeys = ref<number[]>([])
+const sheetResultRefreshKey = reactive<Record<number, number>>({})
+
+function handleExpandRow(expanded: boolean, record: ProcessingTask) {
+  if (expanded) {
+    if (!expandedRowKeys.value.includes(record.id)) {
+      expandedRowKeys.value.push(record.id)
+    }
+    // Trigger initial load by bumping the refresh key
+    sheetResultRefreshKey[record.id] = (sheetResultRefreshKey[record.id] || 0) + 1
+  } else {
+    expandedRowKeys.value = expandedRowKeys.value.filter(k => k !== record.id)
+  }
+}
+
 let pollingTimer: ReturnType<typeof setInterval> | null = null
 const POLLING_INTERVAL = 3000
 
@@ -157,8 +184,16 @@ function startPolling() {
         if (idx !== -1) {
           tasks.value[idx] = updated
         }
+        // Req 16.3: if this task is expanded and still active,
+        // bump its refresh key so the child panel re-fetches.
+        if (
+          expandedRowKeys.value.includes(updated.id) &&
+          (updated.status === 'running' || updated.status === 'pending')
+        ) {
+          sheetResultRefreshKey[updated.id] = (sheetResultRefreshKey[updated.id] || 0) + 1
+        }
       }
-      // If no more active tasks, stop polling
+      // Req 16.4: If no more active tasks, stop polling (refresh keys stop changing → children stay at terminal state)
       if (!hasActiveTasks()) {
         stopPolling()
       }

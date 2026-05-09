@@ -43,6 +43,9 @@ uploads/
 *.swo
 *~
 
+# Kiro spec workspace (local-only: requirements/design/tasks/hooks)
+.kiro/
+
 # Environment
 .env
 .env.local

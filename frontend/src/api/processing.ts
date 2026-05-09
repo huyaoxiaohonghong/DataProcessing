@@ -8,6 +8,10 @@ import apiClient from './client'
 
 export interface MappingField {
     id?: number
+    // 所属目标 Sheet（多 sheet 模式下由前端填 target_sheet_name 给后端）
+    target_sheet_config?: number | null
+    target_sheet_name?: string
+
     source_field: string
     source_field_index: number
 
@@ -23,13 +27,58 @@ export interface MappingField {
     target_field_index: number
 
     // 映射类型与配置
-    field_type: 'direct' | 'lookup' | 'computed' | 'default' | 'source_to_target' | 'source_to_ref' | 'ref_to_target' | 'source_ref_target'
+    field_type: 'direct' | 'lookup' | 'computed' | 'default' | 'cross_sheet_ref' | 'source_to_target' | 'source_to_ref' | 'ref_to_target' | 'source_ref_target'
     field_type_display?: string
 
     default_value: string
     compute_expression: string
+
+    // 跨 sheet 引用
+    source_target_sheet?: number | null
+    source_target_sheet_name?: string
+    source_target_field?: string
+    aggregation?: '' | 'sum' | 'count' | 'avg' | 'min' | 'max' | 'first'
+
     transform_rule: any
     sort_order: number
+}
+
+// 多 sheet 支持：目标 Sheet 配置
+export interface MappingTargetSheet {
+    id?: number
+    sheet_name: string
+    display_name?: string
+    description?: string
+    status?: 'draft' | 'ready' | 'disabled'
+    status_display?: string
+    source_sheet?: string
+    sort_order: number
+    fields: MappingField[]
+    field_count?: number
+    created_at?: string
+    updated_at?: string
+}
+
+// Sheet 血缘（写入版：用 sheet_name 指向）
+export interface SheetLineageEdge {
+    id?: number
+    upstream: string                  // 上游 sheet_name
+    downstream: string                // 下游 sheet_name
+    relation_type: 'derived' | 'aggregated' | 'joined' | 'reference'
+    relation_type_display?: string
+    join_keys?: Array<{ upstream: string; downstream: string }> | null
+    description?: string
+}
+
+// 字段血缘
+export interface FieldLineageEdge {
+    id?: number
+    upstream_sheet: string            // upstream sheet_name
+    upstream_field: string
+    downstream_sheet: string          // downstream sheet_name
+    downstream_field: string
+    transform?: 'direct' | 'computed' | 'aggregated' | 'lookup'
+    note?: string
 }
 
 export interface DataMapping {
@@ -48,6 +97,9 @@ export interface DataMapping {
     status: 'draft' | 'active' | 'disabled'
     status_display: string
     fields: MappingField[]
+    target_sheets?: MappingTargetSheet[]
+    sheet_lineages?: Array<SheetLineageEdge & { upstream: number; downstream: number; upstream_name?: string; downstream_name?: string }>
+    field_lineages?: Array<FieldLineageEdge & { upstream_sheet: number; downstream_sheet: number; upstream_sheet_name?: string; downstream_sheet_name?: string }>
     task_count: number
     created_by: number | null
     created_by_name: string | null
@@ -66,6 +118,10 @@ export interface DataMappingCreate {
     target_sheet?: string
     status?: string
     fields?: MappingField[]
+    // 多 sheet
+    target_sheets?: MappingTargetSheet[]
+    sheet_lineages?: SheetLineageEdge[]
+    field_lineages?: FieldLineageEdge[]
 }
 
 export interface SheetField {
@@ -124,6 +180,42 @@ export const parseFileFields = (fileId: number) => {
     return apiClient.post<any>('/processing/mappings/parse_file/', { file_id: fileId })
 }
 
+// 获取血缘图
+export interface LineageGraph {
+    nodes: Array<{
+        id: number
+        sheet_name: string
+        display_name: string
+        status: string
+        execution_order: number
+        fields: Array<{ id: number; name: string; field_type: string; sort_order: number }>
+    }>
+    edges: Array<{
+        id: number
+        source: number
+        target: number
+        relation_type: string
+        relation_type_display: string
+        description: string
+        join_keys: any
+    }>
+    field_edges: Array<{
+        id: number
+        source_sheet: number
+        source_sheet_name: string
+        source_field: string
+        target_sheet: number
+        target_sheet_name: string
+        target_field: string
+        transform: string
+        note: string
+    }>
+}
+
+export const getMappingLineage = (id: number) => {
+    return apiClient.get<any>(`/processing/mappings/${id}/lineage/`)
+}
+
 // ============== 处理任务 ==============
 
 export interface ProcessingTask {
@@ -142,9 +234,27 @@ export interface ProcessingTask {
     progress: number
     result_file: string | null
     error_message: string | null
+    sheet_results?: TaskSheetResult[]
     created_by: number | null
     created_by_name: string | null
     created_at: string
+}
+
+export interface TaskSheetResult {
+    id: number
+    sheet_name: string
+    target_sheet: number | null
+    status: 'pending' | 'running' | 'completed' | 'failed' | 'skipped'
+    status_display: string
+    total_rows: number
+    success_rows: number
+    error_rows: number
+    progress: number
+    started_at: string | null
+    completed_at: string | null
+    duration_ms: number
+    error_message: string
+    execution_order: number
 }
 
 export interface TaskCreate {
@@ -192,4 +302,9 @@ export const downloadTaskResult = (id: number) => {
     return apiClient.get(`/processing/tasks/${id}/download/`, {
         responseType: 'blob'
     })
+}
+
+// 获取任务 Sheet 执行结果（多 sheet 时使用）
+export const getTaskSheetResults = (id: number) => {
+    return apiClient.get<any>(`/processing/tasks/${id}/sheet_results/`)
 }
